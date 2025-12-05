@@ -1,0 +1,2349 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KAIROS | Système V0.1</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@300;500;600;700&family=Share+Tech+Mono&family=Cinzel:wght@400;700&display=swap" rel="stylesheet">
+    
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        kairos: {
+                            bg: '#030304',
+                            cyan: '#00f3ff',
+                            magenta: '#bc13fe',
+                            blue: '#2667ff',
+                            darkblue: '#0a1018',
+                            gold: '#ffd700',
+                            green: '#00ff9d',
+                            alert: '#ff2a2a'
+                        }
+                    },
+                    fontFamily: {
+                        orbitron: ['Orbitron', 'sans-serif'],
+                        rajdhani: ['Rajdhani', 'sans-serif'],
+                        mono: ['Share Tech Mono', 'monospace'],
+                        greek: ['Cinzel', 'serif'],
+                    },
+                    cursor: {
+                        none: 'none',
+                    },
+                    animation: {
+                        'spin-slow': 'spin 10s linear infinite',
+                        'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'scan': 'scan 3s linear infinite',
+                        'glitch': 'glitch 1s linear infinite',
+                    },
+                    keyframes: {
+                        scan: {
+                            '0%, 100%': { top: '0%', opacity: 0 },
+                            '10%': { opacity: 1 },
+                            '90%': { opacity: 1 },
+                            '100%': { top: '100%', opacity: 0 },
+                        },
+                        glitch: {
+                            '2%, 64%': { transform: 'translate(2px,0) skew(0deg)' },
+                            '4%, 60%': { transform: 'translate(-2px,0) skew(0deg)' },
+                            '62%': { transform: 'translate(0,0) skew(5deg)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #030304;
+            color: #ffffff;
+            overflow-x: hidden;
+            cursor: none; /* Custom cursor handled by JS */
+        }
+
+        /* Scanline Overlay */
+        .scanlines {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(
+                to bottom,
+                rgba(255,255,255,0),
+                rgba(255,255,255,0) 50%,
+                rgba(0,0,0,0.2) 50%,
+                rgba(0,0,0,0.2)
+            );
+            background-size: 100% 4px;
+            pointer-events: none;
+            z-index: 900;
+            opacity: 0.3;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #030304; }
+        ::-webkit-scrollbar-thumb { background: #00f3ff; }
+
+        /* WebGL Canvas */
+        #webgl-canvas {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            z-index: -1;
+            pointer-events: auto;
+        }
+
+        /* Custom Cursor */
+        #cursor-dot, #cursor-ring {
+            position: fixed;
+            top: 0; left: 0;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 9999;
+            mix-blend-mode: difference;
+        }
+        #cursor-dot { width: 8px; height: 8px; background: #00f3ff; transform: translate(-50%, -50%); }
+        #cursor-ring { width: 40px; height: 40px; border: 1px solid #00f3ff; transform: translate(-50%, -50%); transition: width 0.2s, height 0.2s, background 0.2s; }
+        body.hovered #cursor-ring { width: 60px; height: 60px; background: rgba(0, 243, 255, 0.1); border-color: transparent; }
+
+        /* Glassmorphism & 3D Cards */
+        .glass-panel {
+            background: rgba(10, 16, 24, 0.6);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+        }
+        
+        .feature-slot {
+            perspective: 1000px;
+        }
+
+        .glass-card {
+            background: linear-gradient(145deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: transform 0.1s ease-out, box-shadow 0.3s ease;
+            transform-style: preserve-3d;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        /* The beam scanning light */
+        .scan-beam {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(0, 243, 255, 0.8), transparent);
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.5);
+            animation: scan 4s ease-in-out infinite;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        /* Glitch Text */
+        .glitch-text { position: relative; }
+        .glitch-text::before, .glitch-text::after {
+            content: attr(data-text);
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #030304;
+        }
+        .glitch-text::before { left: 2px; text-shadow: -1px 0 #00f3ff; clip: rect(44px, 450px, 56px, 0); animation: glitch-anim-1 5s infinite linear alternate-reverse; }
+        .glitch-text::after { left: -2px; text-shadow: -1px 0 #bc13fe; clip: rect(44px, 450px, 56px, 0); animation: glitch-anim-2 5s infinite linear alternate-reverse; }
+        
+        .glitch-active::before { animation: glitch-anim-1 0.2s infinite linear alternate-reverse !important; }
+        .glitch-active::after { animation: glitch-anim-2 0.2s infinite linear alternate-reverse !important; }
+
+        @keyframes glitch-anim-1 { 0% { clip: rect(20px, 9999px, 21px, 0); } 100% { clip: rect(80px, 9999px, 90px, 0); } }
+        @keyframes glitch-anim-2 { 0% { clip: rect(60px, 9999px, 70px, 0); } 100% { clip: rect(10px, 9999px, 5px, 0); } }
+
+        @keyframes scan {
+            0% { top: -10%; opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { top: 110%; opacity: 0; }
+        }
+
+        /* Slider Improvements */
+        .split-layer { transition: clip-path 0.05s linear; }
+        
+        /* HUD */
+        .hud-line {
+            position: fixed;
+            background: rgba(0, 243, 255, 0.3);
+            z-index: 50;
+        }
+
+        /* --- TIMELINE STYLES --- */
+        .timeline-wrap { position: relative; }
+        .timeline-line-bg {
+            position: absolute; left: 50%; top: 90px; bottom: 0; width: 2px;
+            background: rgba(255,255,255,0.1); transform: translateX(-50%);
+        }
+        .timeline-line-fill {
+            position: absolute; left: 50%; top: 90px; width: 2px; height: 0%;
+            background: #00f3ff; box-shadow: 0 0 10px #00f3ff;
+            transform: translateX(-50%); z-index: 10;
+        }
+        @media (max-width: 768px) { .timeline-line-bg, .timeline-line-fill { left: 20px; } }
+        
+        /* GREEK TYPOGRAPHY */
+        .font-greek { font-family: 'Cinzel', serif; }
+
+        /* --- TABLE STYLES --- */
+        .comparison-table th, .comparison-table td {
+            padding: 1rem;
+            text-align: center;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .comparison-table th {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.8rem;
+            letter-spacing: 0.1em;
+            color: #aaa;
+        }
+        .comparison-table td {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.9rem;
+        }
+        .col-kairos {
+            background: rgba(0, 243, 255, 0.05);
+            border-left: 1px solid rgba(0, 243, 255, 0.2);
+            border-right: 1px solid rgba(0, 243, 255, 0.2);
+        }
+        .col-kairos-header {
+            color: #00f3ff !important;
+            text-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+        }
+
+        /* --- VIRTUAL AI TEACHERS EXTRA STYLE --- */
+        .ai-teacher-orbit {
+            background-image:
+                radial-gradient(circle at 10% 0%, rgba(0,243,255,0.18), transparent 55%),
+                radial-gradient(circle at 90% 100%, rgba(188,19,254,0.22), transparent 55%),
+                radial-gradient(circle at 50% 50%, rgba(0,0,0,0.8), rgba(0,0,0,0.95));
+        }
+        .ai-teacher-holo-ring {
+            box-shadow:
+                0 0 25px rgba(0,243,255,0.5),
+                0 0 60px rgba(188,19,254,0.4);
+        }
+
+        /* --- BUSINESS MODEL STYLES --- */
+        .biz-card-header {
+            background: linear-gradient(90deg, rgba(255,255,255,0.05) 0%, transparent 100%);
+        }
+        .token-glow {
+            box-shadow: 0 0 30px rgba(255, 215, 0, 0.15);
+        }
+
+        /* --- MISSION / WHY SECTION --- */
+        .problem-card {
+            background: linear-gradient(180deg, rgba(255, 42, 42, 0.05) 0%, transparent 100%);
+            border: 1px solid rgba(255, 42, 42, 0.2);
+        }
+        .solution-card {
+            background: linear-gradient(180deg, rgba(0, 243, 255, 0.05) 0%, transparent 100%);
+            border: 1px solid rgba(0, 243, 255, 0.2);
+        }
+
+        /* --- FOOTER 3D CUBE SCENE --- */
+        .footer-cube-scene {
+            perspective: 1200px;
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
+        .footer-cube {
+            width: 300px;
+            height: 300px;
+            position: relative;
+            transform-style: preserve-3d;
+            animation: rotateCube 20s infinite linear;
+        }
+        .cube-face {
+            position: absolute;
+            width: 300px;
+            height: 300px;
+            border: 1px solid rgba(0, 243, 255, 0.4);
+            background: rgba(0, 243, 255, 0.02);
+            box-shadow: 0 0 30px rgba(0, 243, 255, 0.1) inset;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 80px;
+            color: rgba(0, 243, 255, 0.2);
+            backface-visibility: visible;
+        }
+        
+        /* Face transforms */
+        .face-front  { transform: rotateY(0deg) translateZ(150px); }
+        .face-back   { transform: rotateY(180deg) translateZ(150px); }
+        .face-right  { transform: rotateY(90deg) translateZ(150px); }
+        .face-left   { transform: rotateY(-90deg) translateZ(150px); }
+        .face-top    { transform: rotateX(90deg) translateZ(150px); }
+        .face-bottom { transform: rotateX(-90deg) translateZ(150px); }
+
+        /* Animate the cube */
+        @keyframes rotateCube {
+            from { transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg); }
+            to { transform: rotateX(360deg) rotateY(360deg) rotateZ(360deg); }
+        }
+
+        /* Stronger glass for footer to blur the cube */
+        .footer-glass {
+            background: rgba(10, 16, 24, 0.3);
+            backdrop-filter: blur(12px); /* Blurs the cube behind */
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+        }
+    </style>
+</head>
+<body class="antialiased selection:bg-kairos-cyan selection:text-black">
+
+    <!-- CRT Scanlines -->
+    <div class="scanlines"></div>
+
+    <!-- Custom Cursor Elements -->
+    <div id="cursor-dot"></div>
+    <div id="cursor-ring"></div>
+
+    <!-- Audio Toggle -->
+    <div class="fixed bottom-8 right-8 z-50 interactive-element" onclick="toggleAudio()">
+        <div id="audio-btn" class="w-12 h-12 rounded-full border border-kairos-cyan/50 flex items-center justify-center text-black bg-kairos-cyan shadow-[0_0_15px_#00f3ff] hover:bg-white transition-all cursor-none backdrop-blur-sm">
+            <i class="fa-solid fa-volume-high"></i> </div>
+        <div class="text-xs font-mono text-center mt-2 text-kairos-cyan uppercase tracking-widest opacity-70">Son</div>
+    </div>
+
+    <!-- HUD Decor -->
+    <div class="hud-line top-0 left-8 w-[1px] h-24"></div>
+    <div class="hud-line top-8 left-0 w-24 h-[1px]"></div>
+    <div class="fixed top-8 right-8 z-40 font-mono text-xs text-kairos-cyan opacity-60 hidden md:block">
+        ETAT.SYS: <span class="animate-pulse text-green-400">EN LIGNE</span><br>
+        VER: 0.1.0 (BUILD_RAYEN)<br>
+        UTILISATEUR: M. RAYEN MASSOUDI<br>
+        LATENCE: <span id="latency-display">12</span>ms
+    </div>
+
+    <!-- Loader -->
+    <div id="loader" class="fixed inset-0 bg-black z-[100] flex flex-col items-center justify-center">
+        <div class="font-mono text-kairos-cyan mb-4 text-sm tracking-widest">INITIALISATION SYSTÈME</div>
+        <div class="w-64 h-1 bg-gray-800 relative overflow-hidden">
+            <div id="progress-bar" class="absolute inset-0 bg-kairos-cyan w-0 shadow-[0_0_10px_#00f3ff]"></div>
+        </div>
+        <div class="mt-2 font-mono text-[10px] text-gray-500 flex justify-between w-64">
+            <span id="loading-text">CHARGEMENT RESSOURCES</span>
+            <span id="loading-pct">0%</span>
+        </div>
+    </div>
+
+    <!-- 3D Canvas -->
+    <canvas id="webgl-canvas"></canvas>
+
+    <!-- Nav -->
+    <nav class="fixed top-0 w-full z-50 px-8 py-6 flex justify-between items-center mix-blend-difference">
+        <div class="flex items-center gap-4 interactive-element">
+            <div class="w-8 h-8 border border-kairos-cyan flex items-center justify-center animate-spin-slow bg-black/20 backdrop-blur">
+                <div class="w-2 h-2 bg-kairos-cyan shadow-[0_0_5px_#00f3ff]"></div>
+            </div>
+            <span class="font-orbitron font-bold text-2xl tracking-widest text-white" >KAIROS</span>
+        </div>
+        <div class="hidden md:flex gap-8 font-rajdhani font-semibold text-sm tracking-[0.2em] text-gray-400">
+            <a href="#hero" class="interactive-element hover:text-kairos-cyan transition-colors hover:shadow-[0_0_10px_rgba(0,243,255,0.5)]">NOYAU</a>
+            <a href="#mission" class="interactive-element hover:text-kairos-cyan transition-colors hover:shadow-[0_0_10px_rgba(0,243,255,0.5)]">MISSION</a>
+            <a href="#features" class="interactive-element hover:text-kairos-cyan transition-colors hover:shadow-[0_0_10px_rgba(0,243,255,0.5)]">MODULES</a>
+            <a href="#market-data" class="interactive-element hover:text-kairos-cyan transition-colors hover:shadow-[0_0_10px_rgba(0,243,255,0.5)]">ANALYSE</a>
+            <a href="#business-model" class="interactive-element hover:text-kairos-cyan transition-colors hover:shadow-[0_0_10px_rgba(0,243,255,0.5)]">ÉCONOMIE</a>
+            <a href="#the-ask" class="interactive-element hover:text-kairos-cyan transition-colors hover:shadow-[0_0_10px_rgba(0,243,255,0.5)] text-kairos-green animate-pulse">LA DEMANDE</a>
+        </div>
+        <button style="visibility: hidden;" onclick="document.getElementById('contact').scrollIntoView({behavior:'smooth'})" 
+                class="interactive-element border border-white/20 px-6 py-2 font-mono text-xs hover:bg-white hover:text-black transition-all group">
+            <span class="group-hover:animate-pulse">ACCÉDER</span>
+        </button>
+    </nav>
+
+    <main class="relative w-full">
+
+        <!-- HERO -->
+        <section id="hero" class="h-screen w-full flex flex-col items-center justify-center relative perspective-1000">
+            <div class="text-center z-10 pointer-events-none mix-blend-screen">
+                <div class="mb-6 flex justify-center gap-8 opacity-0 translate-y-8" id="hero-logos">
+                    <i class="fa-solid fa-layer-group text-5xl text-white drop-shadow-[0_0_15px_rgba(0,243,255,0.8)] animate-bounce"></i>
+                    <i class="fa-solid fa-infinity text-5xl text-gray-500"></i>
+                </div>
+                
+                <h1 class=" glitch-text text-6xl md:text-9xl font-orbitron font-black tracking-tighter mb-2 opacity-0 " id="hero-title" data-text="KAIROS"  >
+                    KAIROS
+                </h1>
+                <p class=" font-rajdhani text-xl md:text-3xl tracking-[0.5em] text-kairos-cyan mb-12 opacity-0" id="hero-sub"  >
+                    LA SINGULARITÉ ÉDUCATIVE
+                </p>
+
+                <div class="pointer-events-auto opacity-0" id="hero-btn">
+                    <button onclick="enterWormhole()" class="interactive-element relative overflow-hidden group px-12 py-4 bg-transparent border border-kairos-cyan/30 hover:border-kairos-cyan transition-colors" onmouseenter="playHoverSound()">
+    <div class="absolute inset-0 bg-kairos-cyan/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+    <span class="hacker-effect font-mono text-sm text-kairos-cyan group-hover:text-white relative z-10 flex items-center gap-2" data-value="ENTRER DANS LE SYSTÈME">
+        ENTRER DANS LE SYSTÈME <i class="fa-solid fa-rocket text-[10px]"></i>
+    </span>
+</button>
+                    <p class="mt-4 font-mono text-[10px] text-gray-500 animate-pulse">CLIQUER SUR LE NOYAU POUR GLITCHER</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- MISSION / THE WHY SECTION -->
+                <section id="why" class="py-24 px-6 relative bg-gradient-to-b from-black/90 via-kairos-darkblue/30 to-black border-y border-white/5">
+            <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
+                <!-- Left: Narrative -->
+                <div>
+                    <div class="font-mono text-kairos-cyan text-[10px] tracking-[0.35em] uppercase mb-4">
+                        LE_POURQUOI // COUCHE_PROBLÈME
+                    </div>
+                    <h2 class="text-3xl md:text-4xl font-orbitron font-bold text-white mb-4">
+                        L'ÉDUCATION TOURNE SUR UN <span class="text-kairos-magenta">FIRMWARE OBSOLÈTE</span>
+                    </h2>
+                    <p class="font-rajdhani text-gray-300 text-sm md:text-base leading-relaxed mb-6">
+                        La plupart des plateformes ont mis à jour l'interface, pas la logique de base. Les étudiants consomment toujours des vidéos statiques, 
+                        les enseignants se noient toujours dans l'administratif, et les institutions devinent encore ce qui fonctionne vraiment. 
+                        KAIROS réécrit le système d'exploitation au lieu d'ajouter une simple couche.
+                    </p>
+
+                    <!-- Problem bullets -->
+                    <div class="space-y-4 mb-8">
+                        <div class="flex gap-3">
+                            <div class="mt-1 w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center border border-red-500/40">
+                                <i class="fa-solid fa-triangle-exclamation text-red-500 text-xs"></i>
+                            </div>
+                            <div>
+                                <div class="font-mono text-[11px] text-gray-400 uppercase">PROBLÈME_01 // APPRENTISSAGE_STATIQUE</div>
+                                <p class="font-rajdhani text-sm text-gray-200">
+                                    Même contenu pour chaque apprenant, chaque année. Aucune adaptation au rythme, aux connaissances préalables ou à l'attention.
+                                </p>
+                            </div>
+                        </div>
+                        <div class="flex gap-3">
+                            <div class="mt-1 w-8 h-8 rounded-full bg-yellow-500/10 flex items-center justify-center border border-yellow-500/40">
+                                <i class="fa-solid fa-hourglass-half text-yellow-500 text-xs"></i>
+                            </div>
+                            <div>
+                                <div class="font-mono text-[11px] text-gray-400 uppercase">PROBLÈME_02 // SURCHARGE_ADMIN</div>
+                                <p class="font-rajdhani text-sm text-gray-200">
+                                    Les enseignants passent plus de temps à noter, suivre et faire des rapports qu'à enseigner ou mentorer.
+                                </p>
+                            </div>
+                        </div>
+                        <div class="flex gap-3">
+                            <div class="mt-1 w-8 h-8 rounded-full bg-purple-500/10 flex items-center justify-center border border-purple-500/40">
+                                <i class="fa-solid fa-circle-question text-purple-400 text-xs"></i>
+                            </div>
+                            <div>
+                                <div class="font-mono text-[11px] text-gray-400 uppercase">PROBLÈME_03 // RÉSULTATS_BOÎTE_NOIRE</div>
+                                <p class="font-rajdhani text-sm text-gray-200">
+                                    Les institutions manquent de visibilité en temps réel sur qui est bloqué, pourquoi, et quel contenu change réellement les résultats.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- System statement -->
+                    <div class="inline-flex items-center gap-3 px-4 py-3 rounded-full border border-kairos-cyan/40 bg-black/60 backdrop-blur-sm">
+                        <span class="w-2 h-2 rounded-full bg-kairos-cyan animate-pulse"></span>
+                        <p class="font-mono text-[11px] text-kairos-cyan">
+                            ASSERTION_SYSTÈME : KAIROS traite l'apprentissage comme un signal vivant, pas un fichier pré-enregistré.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Right: Solution cards -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <!-- Legacy vs KAIROS card -->
+                    <div class="glass-card rounded-2xl p-6 border border-red-500/40 hover:border-red-500/70 transition-all">
+                        <div class="font-mono text-[10px] text-red-400 mb-1 uppercase tracking-[0.2em]">STACK_OBSOLÈTE</div>
+                        <h3 class="font-orbitron text-lg text-white mb-3">Plateformes Statiques</h3>
+                        <ul class="font-mono text-[11px] text-gray-400 space-y-1">
+                            <li><span class="text-red-500">[–]</span> Playlists vidéo à taille unique</li>
+                            <li><span class="text-red-500">[–]</span> Notation manuelle & feedback retardé</li>
+                            <li><span class="text-red-500">[–]</span> "Taux de complétion" comme KPI principal</li>
+                            <li><span class="text-red-500">[–]</span> Pas d'immersion réelle ou de présence</li>
+                        </ul>
+                    </div>
+
+                    <div class="glass-card rounded-2xl p-6 border border-kairos-cyan/60 hover:border-kairos-cyan transition-all">
+                        <div class="font-mono text-[10px] text-kairos-cyan mb-1 uppercase tracking-[0.2em]">PROTOCOLE_KAIROS</div>
+                        <h3 class="font-orbitron text-lg text-white mb-3">OS Adaptatif pour l'Apprentissage</h3>
+                        <ul class="font-mono text-[11px] text-gray-300 space-y-1">
+                            <li><span class="text-kairos-cyan">[+]</span> L'IA construit un graphe de compétences vivant</li>
+                            <li><span class="text-kairos-cyan">[+]</span> Profs IA en temps réel & auto-notation</li>
+                            <li><span class="text-kairos-cyan">[+]</span> Salles VR / 3D comme primitives natives</li>
+                            <li><span class="text-kairos-cyan">[+]</span> Résultats & maîtrise comme métriques de base</li>
+                        </ul>
+                    </div>
+
+                    <!-- Solution streams -->
+                    <div class="glass-card rounded-2xl p-6 border border-kairos-green/50 hover:border-kairos-green hover:-translate-y-1 transition-all">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="font-mono text-[10px] text-kairos-green uppercase tracking-[0.2em]">COUCHE_SOLUTION_01</span>
+                            <i class="fa-solid fa-brain text-kairos-green"></i>
+                        </div>
+                        <h4 class="font-orbitron text-base text-white mb-2">Profs IA à la Demande</h4>
+                        <p class="font-mono text-[11px] text-gray-300 leading-relaxed">
+                            Chaque apprenant reçoit un professeur IA personnel qui explique, entraîne, évalue et s'adapte en temps réel. 
+                            Les enseignants humains se concentrent sur le mentorat, pas la répétition manuelle.
+                        </p>
+                    </div>
+
+                    <div class="glass-card rounded-2xl p-6 border border-kairos-blue/50 hover:border-kairos-blue hover:-translate-y-1 transition-all">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="font-mono text-[10px] text-kairos-blue uppercase tracking-[0.2em]">COUCHE_SOLUTION_02</span>
+                            <i class="fa-solid fa-chart-line text-kairos-blue"></i>
+                        </div>
+                        <h4 class="font-orbitron text-base text-white mb-2">Intelligence Opérationnelle</h4>
+                        <p class="font-mono text-[11px] text-gray-300 leading-relaxed">
+                            KAIROS affiche des heatmaps en direct : qui est perdu, quel module sous-performe, 
+                            où intervenir. La prise de décision passe de l'intuition à la télémétrie.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
+        <section id="mission" class="py-24 px-6 relative border-b border-white/5">
+            <div class="max-w-7xl mx-auto">
+                <div class="flex flex-col items-center mb-16 text-center">
+                    <div class="font-mono text-kairos-alert text-[10px] tracking-[0.35em] mb-3 uppercase animate-pulse">
+                        DIAGNOSTIC_SYSTÈME : ÉCHEC_CRITIQUE_DÉTECTÉ
+                    </div>
+                    <h2 class="text-4xl md:text-6xl font-orbitron font-bold text-white">LA <span class="text-kairos-cyan">DIVERGENCE</span></h2>
+                    <p class="text-gray-400 font-rajdhani mt-4 max-w-2xl">
+                        L'humanité fait tourner un logiciel du 21ème siècle sur du matériel du 19ème. La divergence entre la façon dont nous apprenons et dont nous vivons est devenue insoutenable.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 relative">
+                    <!-- Central Divider (Desktop) -->
+                    <div class="hidden md:block absolute left-1/2 top-0 bottom-0 w-[1px] bg-gradient-to-b from-transparent via-gray-700 to-transparent -translate-x-1/2"></div>
+                    <div class="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 bg-black border border-gray-700 rounded-full items-center justify-center font-mono text-xs text-gray-500 z-10">
+                        VS
+                    </div>
+
+                    <!-- The Problem (Legacy) -->
+                    <div class="problem-card p-8 rounded-2xl relative overflow-hidden group">
+                        <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                            <i class="fa-solid fa-industry text-8xl text-red-500"></i>
+                        </div>
+                        <div class="mb-6 flex items-center gap-3">
+                            <div class="w-10 h-10 rounded bg-red-900/20 flex items-center justify-center border border-red-500/30">
+                                <i class="fa-solid fa-triangle-exclamation text-red-500"></i>
+                            </div>
+                            <h3 class="font-orbitron text-2xl text-red-500">LE MODÈLE USINE</h3>
+                        </div>
+                        <p class="font-mono text-xs text-gray-400 mb-6 leading-relaxed">
+                            Conçu en 1890 pour produire des ouvriers à la chaîne. Il traite l'intelligence comme fixe et l'apprentissage comme linéaire. C'est un système de production de masse appliqué à l'esprit humain.
+                        </p>
+
+                        <ul class="space-y-4 font-rajdhani text-sm text-gray-300">
+                            <li class="flex items-start gap-3">
+                                <i class="fa-solid fa-xmark text-red-500 mt-1"></i>
+                                <div>
+                                    <strong class="text-white">Lots Standardisés :</strong>
+                                    <p class="text-xs text-gray-500">Grouper les humains par date de fabrication (âge) plutôt que par capacité.</p>
+                                </div>
+                            </li>
+                            <li class="flex items-start gap-3">
+                                <i class="fa-solid fa-xmark text-red-500 mt-1"></i>
+                                <div>
+                                    <strong class="text-white">Téléchargement Passif :</strong>
+                                    <p class="text-xs text-gray-500">Les étudiants s'assoient et reçoivent des données. Taux de rétention < 10%.</p>
+                                </div>
+                            </li>
+                            <li class="flex items-start gap-3">
+                                <i class="fa-solid fa-xmark text-red-500 mt-1"></i>
+                                <div>
+                                    <strong class="text-white">L'Échec est Fatal :</strong>
+                                    <p class="text-xs text-gray-500">Les erreurs sont punies par des notes, décourageant l'itération.</p>
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- The Solution (Kairos) -->
+                    <div class="solution-card p-8 rounded-2xl relative overflow-hidden group">
+                        <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                            <i class="fa-solid fa-network-wired text-8xl text-kairos-cyan"></i>
+                        </div>
+                        <div class="mb-6 flex items-center gap-3">
+                            <div class="w-10 h-10 rounded bg-kairos-cyan/20 flex items-center justify-center border border-kairos-cyan/30">
+                                <i class="fa-solid fa-microchip text-kairos-cyan"></i>
+                            </div>
+                            <h3 class="font-orbitron text-2xl text-kairos-cyan">LE RÉSEAU NEURAL</h3>
+                        </div>
+                        <p class="font-mono text-xs text-gray-400 mb-6 leading-relaxed">
+                            Conçu pour la Singularité. Il traite l'intelligence comme fluide et l'apprentissage comme une toile. Il adapte le système à l'humain, pas l'humain au système.
+                        </p>
+
+                        <ul class="space-y-4 font-rajdhani text-sm text-gray-300">
+                            <li class="flex items-start gap-3">
+                                <i class="fa-solid fa-check text-kairos-cyan mt-1"></i>
+                                <div>
+                                    <strong class="text-white">Maîtrise Adaptative :</strong>
+                                    <p class="text-xs text-gray-500">Avancez seulement quand vous comprenez. Garantie de compréhension à 100%.</p>
+                                </div>
+                            </li>
+                            <li class="flex items-start gap-3">
+                                <i class="fa-solid fa-check text-kairos-cyan mt-1"></i>
+                                <div>
+                                    <strong class="text-white">Création Active :</strong>
+                                    <p class="text-xs text-gray-500">Construire, simuler et enseigner pour apprendre. Taux de rétention > 90%.</p>
+                                </div>
+                            </li>
+                            <li class="flex items-start gap-3">
+                                <i class="fa-solid fa-check text-kairos-cyan mt-1"></i>
+                                <div>
+                                    <strong class="text-white">L'Échec est une Donnée :</strong>
+                                    <p class="text-xs text-gray-500">Les erreurs optimisent l'algorithme IA pour mieux vous enseigner.</p>
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- FEATURES GRID -->
+        <section id="features" class="min-h-screen py-32 px-6 relative z-10">
+            <div class="max-w-7xl mx-auto">
+                <div class="flex items-end gap-4 mb-16 border-b border-gray-800 pb-8">
+                    <h2 class="text-5xl font-orbitron font-bold text-white">MODULES <span class="text-kairos-magenta drop-shadow-[0_0_10px_rgba(188,19,254,0.5)]">SYSTÈME</span></h2>
+                    <span class="font-mono text-kairos-cyan text-xs mb-2">/ DÉFILER POUR SCANNER</span>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <!-- Generated via JS -->
+                    <div class="feature-slot" data-index="0"></div>
+                    <div class="feature-slot" data-index="1"></div>
+                    <div class="feature-slot" data-index="2"></div>
+                    <div class="feature-slot" data-index="3"></div>
+                    <div class="feature-slot" data-index="4"></div>
+                    <div class="feature-slot" data-index="5"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- COMPARISON SLIDER -->
+        <section id="comparison" class="min-h-screen py-20 px-4 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm">
+            <div class="max-w-6xl w-full mb-8 text-center">
+                <h2 class="text-3xl font-orbitron tracking-widest mb-2 text-white">CHANGEMENT DE RÉALITÉ</h2>
+                <p class="font-mono text-xs text-gray-500">GLISSER LE CURSEUR POUR INITIALISER LE PROTOCOLE KAIROS</p>
+            </div>
+
+            <div class="relative w-full max-w-5xl h-[500px] rounded-xl border border-gray-800 overflow-hidden select-none group shadow-2xl shadow-black" id="split-container">
+                <!-- Legacy Side -->
+                <div class="absolute inset-0 bg-[#0a0a0a] flex items-center justify-center">
+                    <div class="text-center opacity-50 grayscale">
+                        <i class="fa-solid fa-file-excel text-6xl mb-4 text-red-900"></i>
+                        <h3 class="text-4xl font-orbitron font-bold text-red-900/50">HÉRITAGE</h3>
+                        <ul class="mt-8 font-mono text-sm text-red-800 space-y-4 text-left inline-block">
+                            <li>[!] CONTENU STATIQUE DÉTECTÉ</li>
+                            <li>[!] SURCHARGE ADMIN : CRITIQUE</li>
+                            <li>[!] ENGAGEMENT : 12%</li>
+                        </ul>
+                    </div>
+                </div>
+                <!-- KAIROS Side -->
+                <div id="split-foreground" class="absolute inset-0 bg-gradient-to-br from-kairos-darkblue to-black flex items-center justify-center split-layer" style="clip-path: inset(0 50% 0 0);">
+                    <div class="absolute inset-0 opacity-20" style="background-image: radial-gradient(#00f3ff 1px, transparent 1px); background-size: 30px 30px;"></div>
+                    <div class="text-center relative z-10">
+                        <i class="fa-solid fa-cube text-6xl mb-4 text-kairos-cyan animate-bounce drop-shadow-[0_0_10px_#00f3ff]"></i>
+                        <h3 class="text-4xl font-orbitron font-bold text-white text-shadow-cyan">KAIROS</h3>
+                        <ul class="mt-8 font-mono text-sm text-kairos-cyan space-y-4 text-left inline-block">
+                            <li><i class="fa-solid fa-check mr-2"></i>GÉNÉRATION IA : ACTIVE</li>
+                            <li><i class="fa-solid fa-check mr-2"></i>AUTONOMIE : 100%</li>
+                            <li><i class="fa-solid fa-check mr-2"></i>IMMERSION : MAX</li>
+                        </ul>
+                    </div>
+                </div>
+                <!-- Handle -->
+                <div id="split-handle" class="absolute top-0 bottom-0 w-[2px] bg-kairos-cyan left-1/2 cursor-ew-resize z-20 shadow-[0_0_15px_rgba(0,243,255,0.8)] hover:shadow-[0_0_25px_rgba(0,243,255,1)] transition-shadow">
+                    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 bg-black border border-kairos-cyan rounded-full flex items-center justify-center interactive-element hover:scale-110 transition-transform">
+                        <i class="fa-solid fa-arrows-left-right text-kairos-cyan text-xs"></i>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- INSTRUCTOR NEXUS SECTION -->
+        <section id="instructors" class="py-32 px-6 relative bg-gradient-to-b from-black via-kairos-darkblue/20 to-black">
+            <div class="max-w-7xl mx-auto">
+                <div class="flex flex-col md:flex-row justify-between items-end mb-16 border-b border-gray-800 pb-6">
+                    <div>
+                        <div class="font-mono text-kairos-green text-xs mb-2 tracking-widest animate-pulse">NIVEAU_ACCÈS : INSTRUCTEUR</div>
+                        <h2 class="text-4xl md:text-6xl font-orbitron font-bold text-white"><span class="text-kairos-green drop-shadow-[0_0_15px_rgba(0,255,157,0.5)]">NEXUS</span> ENSEIGNANT</h2>
+                    </div>
+                    <p class="text-right font-rajdhani text-gray-400 max-w-md mt-4 md:mt-0">
+                        Déployez des modules de connaissances avancés. Monétisez via smart contracts. Engagez via holo-stream.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    
+                    <!-- Tool 1: AI Builder -->
+                    <div class="glass-card p-8 border border-gray-800 hover:border-kairos-green group transition-all">
+                        <div class="flex justify-between items-start mb-6">
+                            <div class="w-14 h-14 rounded-full bg-kairos-green/10 flex items-center justify-center text-kairos-green text-2xl group-hover:scale-110 transition-transform">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                            </div>
+                            <span class="font-mono text-[10px] text-gray-500 border border-gray-800 px-2 py-1 rounded">V.4.0</span>
+                        </div>
+                        <h3 class="text-2xl font-orbitron font-bold text-white mb-2">Architecte de Cours Neural</h3>
+                        <p class="text-gray-400 font-mono text-sm leading-relaxed mb-4">
+                            Oubliez les uploads basiques. Utilisez notre IA Drag-and-Drop pour construire des curriculums adaptatifs. Le système suggère les lacunes de contenu et auto-génère des quiz basés sur les données de rétention des étudiants.
+                        </p>
+                        <ul class="text-xs text-kairos-green font-mono space-y-1">
+                            <li>> Génération Auto de Syllabus</li>
+                            <li>> Accès Bibliothèque Assets 3D</li>
+                        </ul>
+                    </div>
+
+                    <!-- Tool 2: Live Nexus -->
+                    <div class="glass-card p-8 border border-gray-800 hover:border-kairos-cyan group transition-all">
+                        <div class="flex justify-between items-start mb-6">
+                            <div class="w-14 h-14 rounded-full bg-kairos-cyan/10 flex items-center justify-center text-kairos-cyan text-2xl group-hover:scale-110 transition-transform">
+                                <i class="fa-solid fa-satellite-dish"></i>
+                            </div>
+                            <span class="font-mono text-[10px] text-gray-500 border border-gray-800 px-2 py-1 rounded">LIVE</span>
+                        </div>
+                        <h3 class="text-2xl font-orbitron font-bold text-white mb-2">Sessions Holo-Stream</h3>
+                        <p class="text-gray-400 font-mono text-sm leading-relaxed mb-4">
+                            Diffusez directement vers les casques VR ou navigateurs des étudiants avec < 20ms de latence. Utilisez le tableau blanc virtuel et les heatmaps d'engagement en temps réel pour ajuster votre rythme instantanément.
+                        </p>
+                        <ul class="text-xs text-kairos-cyan font-mono space-y-1">
+                            <li>> Support Audio Spatial</li>
+                            <li>> Sondages Instantanés & Overlay Q/R</li>
+                        </ul>
+                    </div>
+
+                    <!-- Tool 3: Smart Economy -->
+                    <div class="glass-card p-8 border border-gray-800 hover:border-kairos-gold group transition-all">
+                        <div class="flex justify-between items-start mb-6">
+                            <div class="w-14 h-14 rounded-full bg-yellow-500/10 flex items-center justify-center text-yellow-500 text-2xl group-hover:scale-110 transition-transform">
+                                <i class="fa-solid fa-vault"></i>
+                            </div>
+                            <span class="font-mono text-[10px] text-gray-500 border border-gray-800 px-2 py-1 rounded">DEFI</span>
+                        </div>
+                        <h3 class="text-2xl font-orbitron font-bold text-white mb-2">Tarification Dynamique & Coffre</h3>
+                        <p class="text-gray-400 font-mono text-sm leading-relaxed mb-4">
+                            Définissez des prix statiques ou activez la tarification dynamique basée sur la demande. Les paiements sont sécurisés via smart contracts, assurant des versements instantanés sans délais tiers.
+                        </p>
+                        <ul class="text-xs text-yellow-500 font-mono space-y-1">
+                            <li>> Passerelles Crypto & Fiat</li>
+                            <li>> 0% Frais Plateforme pour Tiers Supérieurs</li>
+                        </ul>
+                    </div>
+
+                    <!-- Tool 4: Reputation -->
+                    <div class="glass-card p-8 border border-gray-800 hover:border-kairos-magenta group transition-all">
+                        <div class="flex justify-between items-start mb-6">
+                            <div class="w-14 h-14 rounded-full bg-kairos-magenta/10 flex items-center justify-center text-kairos-magenta text-2xl group-hover:scale-110 transition-transform">
+                                <i class="fa-solid fa-medal"></i>
+                            </div>
+                            <span class="font-mono text-[10px] text-gray-500 border border-gray-800 px-2 py-1 rounded">RANG</span>
+                        </div>
+                        <h3 class="text-2xl font-orbitron font-bold text-white mb-2">Le Registre du Mérite</h3>
+                        <p class="text-gray-400 font-mono text-sm leading-relaxed mb-4">
+                            Votre réputation est immuable. Gagnez des badges de statut "Maître" basés sur les taux de réussite vérifiables des étudiants, pas juste la popularité. Débloquez des partages de revenus plus élevés en montant de niveau.
+                        </p>
+                        <ul class="text-xs text-kairos-magenta font-mono space-y-1">
+                            <li>> Avis Vérifiés Uniquement</li>
+                            <li>> Accès Classement Mondial</li>
+                        </ul>
+                    </div>
+
+                </div>
+
+                <!-- VIRTUAL AI TEACHERS SECTION -->
+                <div class="mt-20 border-t border-gray-800 pt-12">
+                    <div class="flex flex-col md:flex-row justify-between gap-8 mb-10">
+                        <div class="max-w-xl">
+                            <div class="font-mono text-kairos-cyan text-[10px] tracking-[0.35em] mb-3 uppercase">
+                                PROFS_IA_VIRTUELS // INSTRUCTEURS_HOLOGRAPHIQUES
+                            </div>
+                            <h3 class="text-3xl md:text-4xl font-orbitron font-bold text-white mb-4">
+                                TUTEURS PERSONNELS IA DE <span class="text-kairos-magenta">NIVEAU PROFESSEUR</span>
+                            </h3>
+                            <p class="font-rajdhani text-gray-300 text-sm md:text-base leading-relaxed mb-4">
+                                Chaque apprenant reçoit un <span class="text-kairos-cyan font-semibold">enseignant virtuel dédié</span> propulsé par un moteur cognitif IA avancé.
+                                L'instructeur lit la performance de l'étudiant, son niveau de confiance, sa vitesse de compréhension, et adapte le flux d'apprentissage en temps réel.
+                            </p>
+
+                            <ul class="font-mono text-[11px] md:text-xs text-gray-400 space-y-2">
+                                <li><span class="text-kairos-cyan">></span> Construit un profil d'état de compétences en direct (vitesse, erreurs, schémas).</li>
+                                <li><span class="text-kairos-cyan">></span> Explications, exercices et rythmes entièrement personnalisés.</li>
+                                <li><span class="text-kairos-cyan">></span> Évaluation continue avec correction automatique de parcours jusqu'à la maîtrise.</li>
+                                <li><span class="text-kairos-cyan">></span> Un instructeur IA peut enseigner à des milliers simultanément — pourtant chaque apprenant se sent en 1:1.</li>
+                            </ul>
+                        </div>
+
+                        <!-- 3D AI / ROBOT ATMOSPHERE -->
+                        <div class="relative flex-1 max-w-lg mx-auto ai-teacher-orbit rounded-3xl border border-kairos-cyan/30 glass-panel overflow-hidden">
+                            <div class="absolute inset-0 opacity-20" style="background-image: radial-gradient(circle at 20% 0%, #00f3ff 0, transparent 55%), radial-gradient(circle at 80% 100%, #bc13fe 0, transparent 55%);"></div>
+                            <div class="relative h-full flex flex-col items-center justify-center py-10 gap-6">
+                                <div class="w-32 h-32 rounded-full border border-kairos-cyan/60 ai-teacher-holo-ring flex items-center justify-center bg-black/70">
+                                    <i class="fa-solid fa-robot text-5xl text-kairos-cyan drop-shadow-[0_0_20px_rgba(0,243,255,0.8)]"></i>
+                                </div>
+                                <p class="font-mono text-[11px] text-center text-gray-300 px-6 leading-relaxed">
+                                    AVATAR HOLOGRAPHIQUE 3D
+                                    <span class="block text-kairos-cyan mt-1">
+                                        L'enseignant virtuel apparaît comme un hologramme IA/robot 3D dans la salle de classe, réagissant avec des gestes, un ton et des changements visuels selon la compréhension de l'apprenant.
+                                    </span>
+                                </p>
+                                <div class="flex gap-4 text-[10px] font-mono text-gray-400">
+                                    <div class="px-3 py-1 rounded-full border border-kairos-cyan/40 bg-black/60 flex items-center gap-2">
+                                        <span class="w-2 h-2 rounded-full bg-kairos-cyan animate-pulse"></span>
+                                        ADAPTATIF TEMPS-RÉEL
+                                    </div>
+                                    <div class="px-3 py-1 rounded-full border border-kairos-magenta/40 bg-black/60 flex items-center gap-2">
+                                        <i class="fa-solid fa-microchip text-kairos-magenta"></i>
+                                        NOYAU IA
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- AI TEACHER ARCHETYPES GRID -->
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mt-6">
+                        
+                        <!-- Concept Professor -->
+                        <div class="glass-card p-5 rounded-2xl border border-kairos-cyan/40 hover:border-kairos-cyan group transition-all hover:-translate-y-2 hover:shadow-[0_0_25px_rgba(0,243,255,0.35)]">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="w-10 h-10 rounded-full bg-kairos-cyan/15 flex items-center justify-center">
+                                    <i class="fa-solid fa-brain text-kairos-cyan"></i>
+                                </div>
+                                <span class="font-mono text-[9px] text-gray-500">MODE: EXPLIQUER</span>
+                            </div>
+                            <h4 class="font-orbitron text-sm text-white mb-2">Professeur de Concepts</h4>
+                            <p class="font-mono text-[10px] text-gray-400 mb-3">
+                                Construit une carte conceptuelle pour chaque apprenant, détecte les lacunes, et ré-explique les sujets avec la clarté d'un professeur senior — simplifié pour la compréhension individuelle.
+                            </p>
+                            <ul class="text-[9px] text-kairos-cyan space-y-1 font-mono">
+                                <li>> Explications multi-niveaux</li>
+                                <li>> Analogies en temps réel</li>
+                            </ul>
+                        </div>
+
+                        <!-- Drill & Mastery Coach -->
+                        <div class="glass-card p-5 rounded-2xl border border-kairos-green/40 hover:border-kairos-green group transition-all hover:-translate-y-2 hover:shadow-[0_0_25px_rgba(0,255,157,0.35)]">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="w-10 h-10 rounded-full bg-kairos-green/15 flex items-center justify-center">
+                                    <i class="fa-solid fa-dumbbell text-kairos-green"></i>
+                                </div>
+                                <span class="font-mono text-[9px] text-gray-500">MODE: PRATIQUE</span>
+                            </div>
+                            <h4 class="font-orbitron text-sm text-white mb-2">Coach d'Entraînement & Maîtrise</h4>
+                            <p class="font-mono text-[10px] text-gray-400 mb-3">
+                                Génère des exercices entièrement adaptatifs basés sur les erreurs de l'apprenant et ajuste la difficulté dynamiquement jusqu'à ce que la maîtrise soit atteinte.
+                            </p>
+                            <ul class="text-[9px] text-kairos-green space-y-1 font-mono">
+                                <li>> Difficulté adaptative</li>
+                                <li>> Suivi des schémas d'erreur</li>
+                            </ul>
+                        </div>
+
+                        <!-- Assessment & Feedback AI -->
+                        <div class="glass-card p-5 rounded-2xl border border-kairos-magenta/40 hover:border-kairos-magenta group transition-all hover:-translate-y-2 hover:shadow-[0_0_25px_rgba(188,19,254,0.35)]">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="w-10 h-10 rounded-full bg-kairos-magenta/15 flex items-center justify-center">
+                                    <i class="fa-solid fa-clipboard-check text-kairos-magenta"></i>
+                                </div>
+                                <span class="font-mono text-[9px] text-gray-500">MODE: ÉVAL</span>
+                            </div>
+                            <h4 class="font-orbitron text-sm text-white mb-2">IA d'Évaluation & Feedback</h4>
+                            <p class="font-mono text-[10px] text-gray-400 mb-3">
+                                Note instantanément les devoirs et examens avec un feedback détaillé et personnalisé et une chronologie complète des progrès.
+                            </p>
+                            <ul class="text-[9px] text-kairos-magenta space-y-1 font-mono">
+                                <li>> Notation instantanée</li>
+                                <li>> Feedback personnalisé</li>
+                            </ul>
+                        </div>
+
+                        <!-- Swarm Class Orchestrator -->
+                        <div class="glass-card p-5 rounded-2xl border border-kairos-blue/40 hover:border-kairos-blue group transition-all hover:-translate-y-2 hover:shadow-[0_0_25px_rgba(38,103,255,0.35)]">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="w-10 h-10 rounded-full bg-kairos-blue/15 flex items-center justify-center">
+                                    <i class="fa-solid fa-users-gear text-kairos-blue"></i>
+                                </div>
+                                <span class="font-mono text-[9px] text-gray-500">MODE: MASSE</span>
+                            </div>
+                            <h4 class="font-orbitron text-sm text-white mb-2">Orchestrateur de Classe en Essaim</h4>
+                            <p class="font-mono text-[10px] text-gray-400 mb-3">
+                                Gère des milliers d'apprenants simultanément, détectant qui a besoin d'intervention et alertant les instructeurs humains seulement si nécessaire.
+                            </p>
+                            <ul class="text-[9px] text-kairos-blue space-y-1 font-mono">
+                                <li>> Heatmap temps réel</li>
+                                <li>> Moteur de personnalisation 1:N</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- END VIRTUAL AI TEACHERS SECTION -->
+
+            </div>
+        </section>
+
+        <!-- MARKET ANALYSIS TABLE -->
+        <section id="market-data" class="py-24 px-4 relative">
+            <div class="max-w-7xl mx-auto">
+                <div class="flex items-end gap-4 mb-12 border-b border-gray-800 pb-4">
+                    <h2 class="text-4xl md:text-5xl font-orbitron font-bold text-white">ANALYSE <span class="text-kairos-magenta drop-shadow-[0_0_10px_rgba(188,19,254,0.5)]">MARCHÉ</span></h2>
+                    <span class="font-mono text-kairos-cyan text-xs mb-2">/ SCAN_CONCURRENTS_TERMINE</span>
+                </div>
+
+                <div class="glass-panel rounded-xl overflow-hidden border border-gray-800 mb-12">
+                    <div class="overflow-x-auto">
+                        <table class="w-full comparison-table text-left border-collapse">
+                            <thead>
+                                <tr class="bg-white/5">
+                                    <th class="w-48">MATRICE_FONCTIONNALITÉS</th>
+                                    <th class="col-kairos col-kairos-header text-lg">KAIROS</th>
+                                    <th>TAKIAKADIMY</th>
+                                    <th>COURSERA</th>
+                                    <th>UDEMY</th>
+                                    <th>UDACITY</th>
+                                    <th>G-CLASSROOM</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-gray-400">
+                                <tr class="hover:bg-white/5 transition-colors">
+                                    <td class="text-white font-bold">Curriculum IA</td>
+                                    <td class="col-kairos text-kairos-cyan"><i class="fa-solid fa-check-double"></i> Dynamique</td>
+                                    <td><i class="fa-solid fa-xmark text-red-900"></i> Statique</td>
+                                    <td><i class="fa-solid fa-xmark text-red-900"></i> Statique</td>
+                                    <td><i class="fa-solid fa-xmark text-red-900"></i> Statique</td>
+                                    <td><i class="fa-solid fa-check text-yellow-600"></i> Limité</td>
+                                    <td><i class="fa-solid fa-xmark text-red-900"></i> Aucun</td>
+                                </tr>
+                                <tr class="hover:bg-white/5 transition-colors">
+                                    <td class="text-white font-bold">Immersion 3D/VR</td>
+                                    <td class="col-kairos text-kairos-cyan"><i class="fa-solid fa-cube"></i> Native</td>
+                                    <td><i class="fa-solid fa-xmark text-red-900"></i> Vidéo 2D</td>
+                                    <td><i class="fa-solid fa-xmark text-red-900"></i> Vidéo 2D</td>
+                                    <td><i class="fa-solid fa-xmark text-red-900"></i> Vidéo 2D</td>
+                                    <td><i class="fa-solid fa-xmark text-red-900"></i> Vidéo 2D</td>
+                                    <td><i class="fa-solid fa-xmark text-red-900"></i> Aucune</td>
+                                </tr>
+                                <tr class="hover:bg-white/5 transition-colors">
+                                    <td class="text-white font-bold">Certification</td>
+                                    <td class="col-kairos text-kairos-cyan"><i class="fa-brands fa-ethereum"></i> Blockchain/NFT</td>
+                                    <td><i class="fa-solid fa-file-pdf text-gray-600"></i> Papier</td>
+                                    <td><i class="fa-solid fa-file-pdf text-gray-600"></i> Numérique</td>
+                                    <td><i class="fa-solid fa-file-pdf text-gray-600"></i> Numérique</td>
+                                    <td><i class="fa-solid fa-file-pdf text-gray-600"></i> Numérique</td>
+                                    <td><i class="fa-solid fa-xmark text-red-900"></i> Aucune</td>
+                                </tr>
+                                <tr class="hover:bg-white/5 transition-colors">
+                                    <td class="text-white font-bold">Architecture</td>
+                                    <td class="col-kairos text-kairos-cyan"><i class="fa-solid fa-network-wired"></i> Décentralisée</td>
+                                    <td>Centralisée</td>
+                                    <td>Centralisée</td>
+                                    <td>Centralisée</td>
+                                    <td>Centralisée</td>
+                                    <td>Centralisée</td>
+                                </tr>
+                                <tr class="hover:bg-white/5 transition-colors">
+                                    <td class="text-white font-bold">Feedback Live</td>
+                                    <td class="col-kairos text-kairos-cyan"><i class="fa-solid fa-bolt"></i> IA Temps-réel</td>
+                                    <td><i class="fa-solid fa-user-clock text-yellow-600"></i> Retardé</td>
+                                    <td><i class="fa-solid fa-user-clock text-yellow-600"></i> Pairs</td>
+                                    <td><i class="fa-solid fa-xmark text-red-900"></i> Aucun</td>
+                                    <td><i class="fa-solid fa-user-clock text-yellow-600"></i> Humain</td>
+                                    <td><i class="fa-solid fa-user-clock text-yellow-600"></i> Prof</td>
+                                </tr>
+                                <tr class="hover:bg-white/5 transition-colors">
+                                    <td class="text-white font-bold">Gamification</td>
+                                    <td class="col-kairos text-kairos-cyan"><i class="fa-solid fa-gamepad"></i> Système RPG</td>
+                                    <td><i class="fa-solid fa-xmark text-red-900"></i> Basique</td>
+                                    <td><i class="fa-solid fa-xmark text-red-900"></i> Aucune</td>
+                                    <td><i class="fa-solid fa-xmark text-red-900"></i> Aucune</td>
+                                    <td><i class="fa-solid fa-xmark text-red-900"></i> Aucune</td>
+                                    <td><i class="fa-solid fa-xmark text-red-900"></i> Aucune</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- BUSINESS MODEL / MONETIZATION SECTION -->
+        <section id="business-model" class="py-24 px-6 relative bg-gradient-to-b from-black via-kairos-darkblue/40 to-black">
+            <div class="max-w-7xl mx-auto">
+                <!-- Header -->
+                <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-16 border-b border-gray-800 pb-6">
+                    <div>
+                        <div class="font-mono text-kairos-gold text-[10px] tracking-[0.35em] uppercase mb-3">
+                            BUSINESS_MODEL // ARCHITECTURE_REVENUS
+                        </div>
+                        <h2 class="text-4xl md:text-5xl font-orbitron font-bold text-white">
+                            MOTEUR DE <span class="text-kairos-magenta drop-shadow-[0_0_12px_rgba(188,19,254,0.6)]">MONÉTISATION</span>
+                        </h2>
+                    </div>
+                    <p class="font-rajdhani text-gray-400 max-w-xl text-sm md:text-base">
+                        KAIROS n'est pas juste une plateforme — c'est une couche économique pour l'éducation. 
+                        Institutions, créateurs et partenaires d'infrastructure se branchent sur une grille de revenus partagés propulsée par l'IA, les smart contracts et la tarification programmable.
+                    </p>
+                </div>
+
+                <!-- Three Pillars -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
+                    <!-- Pillar 1 -->
+                    <div class="glass-card rounded-2xl p-8 border border-kairos-cyan/40 hover:border-kairos-cyan hover:-translate-y-1 transition-all">
+                        <div class="flex items-center justify-between mb-6">
+                            <div class="w-12 h-12 rounded-full bg-kairos-cyan/15 flex items-center justify-center">
+                                <i class="fa-solid fa-layer-group text-kairos-cyan text-xl"></i>
+                            </div>
+                            <span class="font-mono text-[10px] text-gray-500">FLUX_01</span>
+                        </div>
+                        <h3 class="font-orbitron text-xl text-white mb-2">Licence OS KAIROS</h3>
+                        <p class="font-mono text-xs text-gray-400 leading-relaxed mb-4">
+                            Licence SaaS pour écoles, universités, centres de formation et gouvernements.
+                            Facturé par apprenant actif & niveau de fonctionnalité avec add-ons de calcul IA à la demande.
+                        </p>
+                        <ul class="font-mono text-[11px] text-kairos-cyan space-y-1">
+                            <li>> SaaS par Tiers (Starter → Souverain)</li>
+                            <li>> Crédits IA par siège & usage</li>
+                            <li>> Option on-prem / cloud privé</li>
+                        </ul>
+                    </div>
+
+                    <!-- Pillar 2 -->
+                    <div class="glass-card rounded-2xl p-8 border border-kairos-magenta/40 hover:border-kairos-magenta hover:-translate-y-1 transition-all">
+                        <div class="flex items-center justify-between mb-6">
+                            <div class="w-12 h-12 rounded-full bg-kairos-magenta/15 flex items-center justify-center">
+                                <i class="fa-solid fa-coins text-kairos-magenta text-xl"></i>
+                            </div>
+                            <span class="font-mono text-[10px] text-gray-500">FLUX_02</span>
+                        </div>
+                        <h3 class="font-orbitron text-xl text-white mb-2">Économie des Créateurs & Partage de Revenus</h3>
+                        <p class="font-mono text-xs text-gray-400 leading-relaxed mb-4">
+                            Les instructeurs publient des cours neuraux et expériences 3D. 
+                            Les partages de revenus sont appliqués par smart contracts avec une comptabilité transparente on-chain.
+                        </p>
+                        <ul class="font-mono text-[11px] text-kairos-magenta space-y-1">
+                            <li>> Ventes de cours & abonnements</li>
+                            <li>> Micro-transactions in-experience</li>
+                            <li>> NFT / certifications on-chain</li>
+                        </ul>
+                    </div>
+
+                    <!-- Pillar 3 -->
+                    <div class="glass-card rounded-2xl p-8 border border-kairos-gold/40 hover:border-kairos-gold hover:-translate-y-1 transition-all">
+                        <div class="flex items-center justify-between mb-6">
+                            <div class="w-12 h-12 rounded-full bg-yellow-500/15 flex items-center justify-center">
+                                <i class="fa-solid fa-server text-yellow-500 text-xl"></i>
+                            </div>
+                            <span class="font-mono text-[10px] text-gray-500">FLUX_03</span>
+                        </div>
+                        <h3 class="font-orbitron text-xl text-white mb-2">Partenaires Nœuds & Grille Entreprise</h3>
+                        <p class="font-mono text-xs text-gray-400 leading-relaxed mb-4">
+                            Les grandes entreprises et déploiements à l'échelle de villes gèrent les nœuds KAIROS.
+                            Ils possèdent le matériel ; KAIROS propulse la stack et participe aux frais de transaction.
+                        </p>
+                        <ul class="font-mono text-[11px] text-yellow-500 space-y-1">
+                            <li>> Frais d'orchestration par nœud</li>
+                            <li>> Rev-share sur le débit (TX)</li>
+                            <li>> Déploiements Marque Blanche & OEM</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Pricing Grid -->
+                <div class="mb-16">
+                    <div class="flex items-center gap-3 mb-6">
+                        <h3 class="font-orbitron text-2xl md:text-3xl text-white">ACCÈS <span class="text-kairos-blue">PAR TIERS</span></h3>
+                        <div class="h-[1px] flex-grow bg-gradient-to-r from-kairos-blue to-transparent"></div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <!-- Tier 1 -->
+                        <div class="glass-card rounded-2xl border border-gray-800 hover:border-kairos-cyan/60 hover:-translate-y-1 transition-all p-7 flex flex-col">
+                            <div class="font-mono text-[11px] text-gray-400 mb-2">TIER_01</div>
+                            <h4 class="font-orbitron text-xl text-white mb-1">Campus de Lancement</h4>
+                            <p class="font-mono text-xs text-gray-500 mb-4">Pour petites écoles, bootcamps & centres de formation.</p>
+                            <div class="flex items-baseline gap-1 mb-4">
+                                <span class="text-3xl font-orbitron text-kairos-cyan">499$</span>
+                                <span class="font-mono text-[10px] text-gray-400">/mois</span>
+                            </div>
+                            <ul class="font-mono text-[11px] text-gray-300 space-y-1 flex-1">
+                                <li>> Jusqu'à 500 apprenants actifs</li>
+                                <li>> Moteur enseignant IA de base</li>
+                                <li>> Tableau de bord analytique basique</li>
+                                <li>> Support email & communauté</li>
+                            </ul>
+                            <button class="mt-6 w-full border border-kairos-cyan/40 text-kairos-cyan font-mono text-[11px] py-2 rounded interactive-element hover:bg-kairos-cyan hover:text-black transition-all" onmouseenter="playHoverSound()">
+                                DEMANDER_LANCEMENT
+                            </button>
+                        </div>
+
+                        <!-- Tier 2 -->
+                        <div class="glass-card rounded-2xl border border-kairos-magenta/60 hover:-translate-y-1 transition-all p-7 relative overflow-hidden flex flex-col">
+                            <div class="absolute top-0 right-0 px-3 py-1 bg-kairos-magenta text-black font-mono text-[9px] tracking-[0.18em] uppercase">
+                                POPULAIRE
+                            </div>
+                            <div class="font-mono text-[11px] text-gray-400 mb-2">TIER_02</div>
+                            <h4 class="font-orbitron text-xl text-white mb-1">Institution Neurale</h4>
+                            <p class="font-mono text-xs text-gray-500 mb-4">Universités & écoles nationales passant en mode hybride complet.</p>
+                            <div class="flex items-baseline gap-1 mb-4">
+                                <span class="text-3xl font-orbitron text-kairos-magenta">2 900$</span>
+                                <span class="font-mono text-[10px] text-gray-400">/mois</span>
+                            </div>
+                            <ul class="font-mono text-[11px] text-gray-300 space-y-1 flex-1">
+                                <li>> Jusqu'à 10 000 apprenants actifs</li>
+                                <li>> Parcours adaptatifs avancés</li>
+                                <li>> Module de certification on-chain</li>
+                                <li>> Support prioritaire & CSM</li>
+                            </ul>
+                            <button class="mt-6 w-full bg-kairos-magenta text-black font-mono text-[11px] py-2 rounded interactive-element hover:bg-white hover:text-black transition-all" onmouseenter="playHoverSound()" onmousedown="playClickSound()">
+                                PARLER_AUX_VENTES
+                            </button>
+                        </div>
+
+                        <!-- Tier 3 -->
+                        <div class="glass-card rounded-2xl border border-kairos-gold/60 hover:-translate-y-1 transition-all p-7 flex flex-col">
+                            <div class="font-mono text-[11px] text-gray-400 mb-2">TIER_03</div>
+                            <h4 class="font-orbitron text-xl text-white mb-1">Grille Souveraine</h4>
+                            <p class="font-mono text-xs text-gray-500 mb-4">Gouvernements, méga-entreprises & villes déployant un OS éducatif.</p>
+                            <div class="flex items-baseline gap-1 mb-4">
+                                <span class="text-3xl font-orbitron text-yellow-500">Sur Mesure</span>
+                            </div>
+                            <ul class="font-mono text-[11px] text-gray-300 space-y-1 flex-1">
+                                <li>> Apprenants & nœuds illimités</li>
+                                <li>> Options LLM Privé & infra</li>
+                                <li>> Équipe sur site & SLAs</li>
+                                <li>> Structures stratégiques de partage de revenus</li>
+                            </ul>
+                            <button class="mt-6 w-full border border-yellow-500/60 text-yellow-500 font-mono text-[11px] py-2 rounded interactive-element hover:bg-yellow-500 hover:text-black transition-all" onmouseenter="playHoverSound()">
+                                CONCEVOIR_VOTRE_GRILLE
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tokenomics / Fee Rail Strip -->
+                <div class="glass-panel rounded-2xl border border-white/10 px-6 md:px-10 py-6 flex flex-col md:flex-row items-center gap-6">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-full bg-kairos-cyan/20 flex items-center justify-center">
+                            <i class="fa-solid fa-bolt text-kairos-cyan"></i>
+                        </div>
+                        <div>
+                            <div class="font-mono text-[11px] text-kairos-cyan tracking-[0.2em] uppercase">PROTOCOLE_ÉCONOMIQUE</div>
+                            <h4 class="font-orbitron text-lg text-white">Frais, Tokens & Smart Contracts</h4>
+                        </div>
+                    </div>
+                    <div class="flex-1 font-mono text-[11px] text-gray-300 space-y-1">
+                        <p><span class="text-kairos-cyan">></span> Frais de plateforme entre <span class="text-white">5–15%</span> sur les revenus créateurs selon le tier.</p>
+                        <p><span class="text-kairos-cyan">></span> Tous les paiements sont streamés en quasi temps-réel via smart contracts programmables (rails crypto ou fiat).</p>
+                        <p><span class="text-kairos-cyan">></span> La future couche token débloque le staking pour les nœuds, les récompenses pour les tops enseignants et les pools d'incitation pour apprenants.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- GROWTH PROJECTIONS SECTION -->
+        <section id="projections" class="py-24 px-6 relative border-t border-white/5">
+            <div class="max-w-7xl mx-auto">
+                <div class="flex flex-col md:flex-row items-end justify-between gap-6 mb-16">
+                    <div>
+                        <div class="font-mono text-kairos-cyan text-[10px] tracking-[0.35em] uppercase mb-3 animate-pulse">
+                            TÉLÉMÉTRIE_FUTURE // DONNÉES_PRÉDICTIVES
+                        </div>
+                        <h2 class="text-4xl md:text-5xl font-orbitron font-bold text-white">
+                            PROJECTION <span class="text-kairos-blue drop-shadow-[0_0_12px_rgba(38,103,255,0.6)]">CROISSANCE</span>
+                        </h2>
+                    </div>
+                    <div class="flex gap-4 font-mono text-xs">
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 bg-kairos-cyan/20 border border-kairos-cyan"></span>
+                            <span class="text-gray-400">OPTIMISTE</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 bg-kairos-magenta/20 border border-kairos-magenta"></span>
+                            <span class="text-gray-400">CONSERVATEUR</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    
+                    <div class="glass-card p-6 rounded-2xl border border-gray-800 relative group">
+                        <div class="flex justify-between items-center mb-6">
+                            <h3 class="font-orbitron text-xl text-white">PENÉTRATION MARCHÉ</h3>
+                            <span class="px-2 py-1 bg-kairos-cyan/10 border border-kairos-cyan/30 text-kairos-cyan font-mono text-[10px] rounded">CUMULATIF</span>
+                        </div>
+                        <div class="relative w-full h-64 md:h-80">
+                            <canvas id="marketChart"></canvas>
+                        </div>
+                        <div class="absolute bottom-4 right-4 text-right">
+                            <div class="font-mono text-[10px] text-gray-500">OBJECTIF 2029</div>
+                            <div class="font-orbitron text-2xl text-kairos-cyan">12.5%</div>
+                        </div>
+                    </div>
+
+                    <div class="glass-card p-6 rounded-2xl border border-gray-800 relative group">
+                        <div class="flex justify-between items-center mb-6">
+                            <h3 class="font-orbitron text-xl text-white">VECTEUR REVENUS</h3>
+                            <span class="px-2 py-1 bg-kairos-magenta/10 border border-kairos-magenta/30 text-kairos-magenta font-mono text-[10px] rounded">ARR (M$)</span>
+                        </div>
+                        <div class="relative w-full h-64 md:h-80">
+                            <canvas id="growthChart"></canvas>
+                        </div>
+                        <div class="absolute bottom-4 right-4 text-right">
+                            <div class="font-mono text-[10px] text-gray-500">MULTIPLICATEUR</div>
+                            <div class="font-orbitron text-2xl text-kairos-magenta">x14.2</div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
+                    <div class="border border-white/5 bg-black/40 p-4 rounded text-center">
+                        <div class="text-gray-500 font-mono text-[10px] mb-1">CAC (COÛT ACQ.)</div>
+                        <div class="text-white font-orbitron text-lg">14.50 $</div>
+                    </div>
+                    <div class="border border-white/5 bg-black/40 p-4 rounded text-center">
+                        <div class="text-gray-500 font-mono text-[10px] mb-1">LTV (VALEUR VIE)</div>
+                        <div class="text-kairos-cyan font-orbitron text-lg">480.00 $</div>
+                    </div>
+                    <div class="border border-white/5 bg-black/40 p-4 rounded text-center">
+                        <div class="text-gray-500 font-mono text-[10px] mb-1">CHURN (DÉPART)</div>
+                        <div class="text-kairos-green font-orbitron text-lg">< 2.1%</div>
+                    </div>
+                    <div class="border border-white/5 bg-black/40 p-4 rounded text-center">
+                        <div class="text-gray-500 font-mono text-[10px] mb-1">MARGE BRUTE</div>
+                        <div class="text-kairos-magenta font-orbitron text-lg">85%</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- GLOBAL METRICS SECTION -->
+        <section id="global-stats" class="py-20 px-6 bg-black/30 border-y border-white/5">
+            <div class="max-w-7xl mx-auto">
+                <div class="flex items-center gap-4 mb-12">
+                    <h2 class="text-3xl md:text-4xl font-orbitron font-bold text-white">MÉTRIQUES <span class="text-kairos-blue">GLOBALES</span></h2>
+                    <div class="h-[1px] flex-grow bg-gradient-to-r from-kairos-blue to-transparent"></div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <!-- Metric 1 -->
+                    <div class="glass-card p-6 text-center border-t border-kairos-cyan/30 relative overflow-hidden group">
+                        <div class="absolute inset-0 bg-kairos-cyan/5 translate-y-full group-hover:translate-y-0 transition-transform duration-500"></div>
+                        <div class="text-5xl font-mono font-bold text-white mb-2 counter" data-target="840">0</div>
+                        <div class="text-xs font-orbitron text-kairos-cyan tracking-widest uppercase">Milliards $ Marché (2030)</div>
+                        <p class="text-[10px] text-gray-500 mt-2 font-mono">Valorisation E-Learning Projetée</p>
+                    </div>
+
+                    <!-- Metric 2 -->
+                    <div class="glass-card p-6 text-center border-t border-kairos-magenta/30 relative overflow-hidden group">
+                        <div class="absolute inset-0 bg-kairos-magenta/5 translate-y-full group-hover:translate-y-0 transition-transform duration-500"></div>
+                        <div class="text-5xl font-mono font-bold text-white mb-2 flex justify-center items-baseline"><span class="counter" data-target="47">0</span>%</div>
+                        <div class="text-xs font-orbitron text-kairos-magenta tracking-widest uppercase">Taux de Croissance IA</div>
+                        <p class="text-[10px] text-gray-500 mt-2 font-mono">Adoption Annuelle IA EdTech</p>
+                    </div>
+
+                    <!-- Metric 3 -->
+                    <div class="glass-card p-6 text-center border-t border-kairos-blue/30 relative overflow-hidden group">
+                        <div class="absolute inset-0 bg-kairos-blue/5 translate-y-full group-hover:translate-y-0 transition-transform duration-500"></div>
+                        <div class="text-5xl font-mono font-bold text-white mb-2 counter" data-target="98">0</div>
+                        <div class="text-xs font-orbitron text-kairos-blue tracking-widest uppercase">% Adoption Hybride</div>
+                        <p class="text-[10px] text-gray-500 mt-2 font-mono">Institutions Passant au Numérique</p>
+                    </div>
+
+                    <!-- Metric 4 -->
+                    <div class="glass-card p-6 text-center border-t border-yellow-500/30 relative overflow-hidden group">
+                        <div class="absolute inset-0 bg-yellow-500/5 translate-y-full group-hover:translate-y-0 transition-transform duration-500"></div>
+                        <div class="text-5xl font-mono font-bold text-white mb-2 flex justify-center items-baseline"><span class="counter" data-target="2">0</span>.5B</div>
+                        <div class="text-xs font-orbitron text-yellow-500 tracking-widest uppercase">Apprenants Numériques</div>
+                        <p class="text-[10px] text-gray-500 mt-2 font-mono">Estimation Base Utilisateurs Mondiale</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- NEW: THE ASK (PARTNERSHIP PROPOSAL FOR TRIWEB) -->
+        <section id="the-ask" class="py-24 px-6 relative bg-kairos-darkblue/30 border-t border-kairos-cyan/20">
+            <div class="max-w-5xl mx-auto text-center mb-16">
+                <div class="inline-block px-4 py-1 border border-kairos-green/50 rounded-full bg-kairos-green/10 mb-4">
+                    <span class="font-mono text-xs text-kairos-green tracking-widest animate-pulse">ATTN : PROTOCOLE_TRIWEB</span>
+                </div>
+                <h2 class="text-4xl md:text-6xl font-orbitron font-bold text-white mb-6">LA <span class="text-kairos-cyan">DEMANDE</span></h2>
+                <p class="font-rajdhani text-gray-400 text-lg max-w-2xl mx-auto">
+                    Nous avons besoin d'une injection cinétique pour combler le fossé entre le prototype et la singularité. 
+                    Notre proposition pour TriWeb est structurée en deux phases d'exécution distinctes.
+                </p>
+            </div>
+
+            <div class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                
+                <!-- Phase 1 Card -->
+                <div class="glass-card p-8 rounded-2xl border-l-4 border-kairos-cyan relative overflow-hidden group hover:bg-white/5 transition-all">
+                    <div class="absolute top-0 right-0 p-6 opacity-10">
+                        <i class="fa-solid fa-rocket text-8xl text-kairos-cyan"></i>
+                    </div>
+                    <div class="font-mono text-kairos-cyan text-xs mb-2 tracking-[0.2em]">PHASE_01 // ALLUMAGE</div>
+                    <h3 class="text-3xl font-orbitron font-bold text-white mb-4">RUNWAY DE LANCEMENT MVP</h3>
+                    <div class="flex items-center gap-4 mb-6">
+                        <div class="px-3 py-1 bg-kairos-cyan/20 rounded text-kairos-cyan font-mono text-xs">DURÉE : 6 MOIS</div>
+                        <div class="px-3 py-1 bg-white/10 rounded text-gray-300 font-mono text-xs">TYPE : OPÉRATIONNEL</div>
+                    </div>
+                    <p class="font-rajdhani text-gray-300 mb-6 leading-relaxed">
+                        Nous avons besoin d'une allocation d'amorçage concise pour sécuriser une <strong>fluidité opérationnelle sans faille</strong>. 
+                        Ce runway permet à l'équipe centrale de se concentrer à 100% sur la livraison du Produit Minimum Viable (MVP) sans friction.
+                    </p>
+                    <ul class="space-y-2 font-mono text-xs text-gray-400">
+                        <li class="flex items-center gap-2"><i class="fa-solid fa-check text-kairos-cyan"></i> Subsistance Équipe Dev Core</li>
+                        <li class="flex items-center gap-2"><i class="fa-solid fa-check text-kairos-cyan"></i> Coûts Initiaux Entraînement Modèle IA</li>
+                        <li class="flex items-center gap-2"><i class="fa-solid fa-check text-kairos-cyan"></i> Déploiement Test Alpha</li>
+                    </ul>
+                </div>
+
+                <!-- Connection Arrow (Desktop) -->
+                <div class="hidden md:flex justify-center items-center absolute left-1/2 -translate-x-1/2 z-10">
+                    <div class="w-12 h-12 rounded-full bg-black border border-gray-700 flex items-center justify-center shadow-[0_0_15px_#00f3ff]">
+                        <i class="fa-solid fa-arrow-right text-gray-500 animate-pulse"></i>
+                    </div>
+                </div>
+
+                <!-- Phase 2 Card -->
+                <div class="glass-card p-8 rounded-2xl border-r-4 border-kairos-gold relative overflow-hidden group hover:bg-white/5 transition-all text-left md:text-right">
+                    <div class="absolute top-0 left-0 p-6 opacity-10">
+                        <i class="fa-solid fa-server text-8xl text-yellow-500"></i>
+                    </div>
+                    <div class="font-mono text-yellow-500 text-xs mb-2 tracking-[0.2em]">PHASE_02 // EXPANSION</div>
+                    <h3 class="text-3xl font-orbitron font-bold text-white mb-4">MISE À L'ÉCHELLE INFRASTRUCTURE</h3>
+                    <div class="flex items-center gap-4 mb-6 md:justify-end">
+                        <div class="px-3 py-1 bg-white/10 rounded text-gray-300 font-mono text-xs">TYPE : CAPEX / PARTENARIAT</div>
+                        <div class="px-3 py-1 bg-yellow-500/20 rounded text-yellow-500 font-mono text-xs">TIMELINE : POST-MVP</div>
+                    </div>
+                    <p class="font-rajdhani text-gray-300 mb-6 leading-relaxed">
+                        Une fois le MVP en vol, nous invitons TriWeb à mener le <strong>Tour d'Infrastructure</strong>. 
+                        Ce capital déploiera les nœuds physiques et cloud nécessaires pour héberger le réseau neural KAIROS à l'échelle.
+                    </p>
+                    <ul class="space-y-2 font-mono text-xs text-gray-400 flex flex-col md:items-end">
+                        <li class="flex items-center gap-2">Déploiement Mondial de Nœuds <i class="fa-solid fa-check text-yellow-500"></i></li>
+                        <li class="flex items-center gap-2">Calcul IA Grade Entreprise <i class="fa-solid fa-check text-yellow-500"></i></li>
+                        <li class="flex items-center gap-2">Couches de Stockage Décentralisées <i class="fa-solid fa-check text-yellow-500"></i></li>
+                    </ul>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- TIMELINE SECTION -->
+        <section id="timeline" class="py-32 px-6 relative overflow-hidden">
+            <div class="max-w-5xl mx-auto timeline-wrap">
+                <div class="flex flex-col items-center mb-24 relative z-10">
+                    <h2 class="text-4xl md:text-5xl font-orbitron font-bold text-white mb-2">FEUILLE DE ROUTE <span class="text-kairos-cyan">SYSTÈME</span></h2>
+                    <div class="w-24 h-1 bg-kairos-magenta"></div>
+                </div>
+
+                <!-- Vertical Line -->
+                <div class="timeline-line-bg"></div>
+                <div class="timeline-line-fill" id="line-progress"></div>
+
+                <!-- Timeline Items (Generated by JS) -->
+                <div class="flex flex-col gap-24" id="timeline-items"></div>
+            </div>
+        </section>
+
+        <!-- PHILOSOPHY SECTION -->
+        <section id="philosophy" class="min-h-[60vh] py-32 px-6 relative flex items-center justify-center overflow-hidden">
+            <!-- Background Symbol -->
+            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[20rem] md:text-[40rem] font-greek text-white opacity-[0.03] select-none pointer-events-none z-0">Κ</div>
+            
+            <div class="max-w-5xl w-full text-center relative z-10">
+                <div class="text-kairos-cyan font-mono text-xs mb-6 tracking-[0.5em] animate-pulse">BASE_DE_DONNÉES_ÉTYMOLOGIE</div>
+                
+                <h2 class="text-5xl md:text-8xl font-orbitron font-black text-white mb-16 drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">
+                    K<span class="text-kairos-cyan inline-block hover:scale-110 transition-transform cursor-help relative group" title="Intelligence Artificielle">AI
+                        <span class="absolute -bottom-8 left-1/2 -translate-x-1/2 text-xs font-mono text-kairos-cyan opacity-0 group-hover:opacity-100 transition-opacity w-32 pointer-events-none">INTEL_ARTIFICIELLE</span>
+                    </span>R<span class="text-kairos-magenta inline-block hover:scale-110 transition-transform cursor-help relative group" title="Système d'Exploitation">OS
+                        <span class="absolute -bottom-8 left-1/2 -translate-x-1/2 text-xs font-mono text-kairos-magenta opacity-0 group-hover:opacity-100 transition-opacity w-32 pointer-events-none">SYSTEME_OP</span>
+                    </span>
+                </h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 text-left">
+                    <!-- Chronos Card -->
+                    <div class="glass-panel p-8 rounded-2xl border border-gray-800 relative hover:border-gray-600 transition-colors group">
+                        <h3 class="text-2xl font-greek text-gray-500 mb-2">CHRONOS (Χρόνος)</h3>
+                        <p class="font-mono text-xs text-gray-600 mb-4 uppercase">Temps Séquentiel</p>
+                        <p class="font-rajdhani text-gray-400 leading-relaxed">
+                            L'horloge qui tourne. La durée quantitative. L'ancien système de semestres, d'heures et d'emplois du temps rigides qui lie le potentiel humain.
+                        </p>
+                    </div>
+
+                    <!-- Kairos Card -->
+                    <div class="glass-panel p-8 rounded-2xl border border-kairos-cyan/50 relative hover:border-kairos-cyan transition-colors group">
+                        <div class="absolute inset-0 bg-kairos-cyan/5 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl"></div>
+                        <h3 class="text-2xl font-greek text-white mb-2">KAIROS (Καιρός)</h3>
+                        <p class="font-mono text-xs text-kairos-cyan mb-4 uppercase">Le Moment Opportun</p>
+                        <p class="font-rajdhani text-gray-200 leading-relaxed">
+                            L'instant parfait pour l'action. Le temps qualitatif. Nous ne mesurons pas seulement le temps ; nous optimisons le moment d'apprentissage par l'intégration de l'<span class="text-kairos-cyan font-bold">IA</span> au sein d'un nouvel <span class="text-kairos-magenta font-bold">OS</span> pour l'humanité.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="mt-12 inline-block px-6 py-3 border border-white/10 bg-black/40 rounded-full backdrop-blur-sm">
+                    <p class="font-mono text-xs md:text-sm text-kairos-cyan">
+                        <span class="text-kairos-magenta">></span> LOGIQUE_SYSTÈME : Saisir l'instant. Automatiser le futur.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- CONTACT / FOOTER WITH 3D CUBE BACKGROUND -->
+        <section id="contact" class="h-screen flex items-center justify-center relative w-full overflow-hidden bg-black/50">
+            
+            <!-- 3D Cube Scene (Pure CSS) -->
+            <div class="footer-cube-scene">
+                <div class="footer-cube">
+                    <div class="cube-face face-front"><i class="fa-solid fa-network-wired"></i></div>
+                    <div class="cube-face face-back"><i class="fa-solid fa-code"></i></div>
+                    <div class="cube-face face-right"><i class="fa-solid fa-brain"></i></div>
+                    <div class="cube-face face-left"><i class="fa-solid fa-database"></i></div>
+                    <div class="cube-face face-top"></div>
+                    <div class="cube-face face-bottom"></div>
+                </div>
+            </div>
+
+            <!-- Glass Panel Foreground -->
+            <div class="footer-glass p-12 max-w-2xl w-full text-center relative z-10 rounded-3xl border-t-4 border-t-kairos-cyan">
+                <div class="absolute -top-6 left-1/2 -translate-x-1/2 bg-black border border-kairos-cyan px-4 py-1 text-xs font-mono text-kairos-cyan shadow-[0_0_10px_rgba(0,243,255,0.3)]">
+                    LIEN_TRANSMISSION
+                </div>
+                
+                <h2 class="text-5xl font-orbitron font-black mb-4 text-white">INITIALISER</h2>
+                <p class="font-rajdhani text-gray-400 mb-8 text-lg">Prêt à déployer l'infrastructure éducative du futur ?</p>
+                
+                <div class="flex flex-col gap-4 max-w-xs mx-auto">
+                    <button class="interactive-element w-full py-4 bg-kairos-cyan text-black font-bold font-orbitron hover:bg-white hover:shadow-[0_0_20px_rgba(255,255,255,0.4)] transition-all rounded-lg" onmouseenter="playHoverSound()" onmousedown="playClickSound()">
+                        PLANIFIER DÉMO
+                    </button>
+                    <button class="interactive-element w-full py-4 border border-gray-700 text-gray-400 font-mono text-xs hover:border-kairos-cyan hover:text-kairos-cyan transition-colors rounded-lg bg-black/50" onmouseenter="playHoverSound()">
+                        TÉLÉCHARGER_BLUEPRINT.PDF
+                    </button>
+                </div>
+
+                <div class="mt-12 flex justify-center gap-8 text-2xl text-gray-600">
+                    <a href="#" class="interactive-element hover:text-kairos-cyan transition-colors hover:scale-110 transform"><i class="fa-brands fa-github"></i></a>
+                    <a href="#" class="interactive-element hover:text-kairos-blue transition-colors hover:scale-110 transform"><i class="fa-brands fa-linkedin"></i></a>
+                    <a href="#" class="interactive-element hover:text-kairos-magenta transition-colors hover:scale-110 transform"><i class="fa-brands fa-discord"></i></a>
+                </div>
+                
+                <div class="mt-8 text-[10px] font-mono text-gray-500 opacity-60">
+                    &copy; 2025 SYSTÈMES KAIROS. CONÇU PAR RAYEN MASSOUDI.
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- SCRIPTS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+
+    <script>
+        // --- CHARTS CONFIGURATION ---
+        // Setup Chart.js defaults for Cyberpunk look
+        Chart.defaults.color = '#6b7280';
+        Chart.defaults.font.family = '"Share Tech Mono", monospace';
+        Chart.defaults.scale.grid.color = 'rgba(255, 255, 255, 0.05)';
+
+        // 1. Market Penetration Chart (Linear / Line)
+        const ctxMarket = document.getElementById('marketChart').getContext('2d');
+        
+        // Create Gradient for Line Chart
+        const gradientCyan = ctxMarket.createLinearGradient(0, 0, 0, 400);
+        gradientCyan.addColorStop(0, 'rgba(0, 243, 255, 0.5)');
+        gradientCyan.addColorStop(1, 'rgba(0, 243, 255, 0)');
+
+        const marketChart = new Chart(ctxMarket, {
+            type: 'line',
+            data: {
+                labels: ['Q1 2026', 'Q3 2026', 'Q1 2027', 'Q3 2027', 'Q1 2028', 'Q3 2028', '2029'],
+                datasets: [{
+                    label: 'Part de Marché (%)',
+                    data: [0.1, 0.5, 1.8, 3.5, 6.2, 9.4, 12.5],
+                    borderColor: '#00f3ff',
+                    backgroundColor: gradientCyan,
+                    borderWidth: 2,
+                    pointBackgroundColor: '#000',
+                    pointBorderColor: '#00f3ff',
+                    pointHoverBackgroundColor: '#00f3ff',
+                    pointHoverBorderColor: '#fff',
+                    fill: true,
+                    tension: 0.4 // Smooth curve
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(3, 3, 4, 0.9)',
+                        titleColor: '#00f3ff',
+                        bodyColor: '#fff',
+                        borderColor: '#00f3ff',
+                        borderWidth: 1,
+                        displayColors: false,
+                        callbacks: {
+                            label: function(context) {
+                                return context.parsed.y + '% Market Share';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: { borderDash: [5, 5] }
+                    },
+                    x: {
+                        grid: { display: false }
+                    }
+                },
+                animation: {
+                    duration: 2000,
+                    easing: 'easeOutQuart'
+                }
+            }
+        });
+
+        // 2. Revenue Growth Chart (Animated Bar)
+        const ctxGrowth = document.getElementById('growthChart').getContext('2d');
+
+        const growthChart = new Chart(ctxGrowth, {
+            type: 'bar',
+            data: {
+                labels: ['2026', '2027', '2028', '2029'],
+                datasets: [{
+                    label: 'Revenus (M$)',
+                    data: [1.2, 4.5, 12.8, 32.4],
+                    backgroundColor: [
+                        'rgba(188, 19, 254, 0.3)',
+                        'rgba(188, 19, 254, 0.5)',
+                        'rgba(188, 19, 254, 0.7)',
+                        'rgba(188, 19, 254, 0.9)'
+                    ],
+                    borderColor: '#bc13fe',
+                    borderWidth: 1,
+                    barThickness: 40
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(3, 3, 4, 0.9)',
+                        titleColor: '#bc13fe',
+                        bodyColor: '#fff',
+                        borderColor: '#bc13fe',
+                        borderWidth: 1
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                    },
+                    x: { grid: { display: false } }
+                },
+                animation: {
+                    delay: (context) => {
+                        let delay = 0;
+                        if (context.type === 'data' && context.mode === 'default') {
+                            delay = context.dataIndex * 300 + context.datasetIndex * 100;
+                        }
+                        return delay;
+                    },
+                    duration: 1500,
+                    easing: 'easeOutBounce' // Bouncy animation for "growth" feel
+                }
+            }
+        });
+
+        // Trigger Animations on Scroll
+        ScrollTrigger.create({
+            trigger: "#projections",
+            start: "top 70%",
+            onEnter: () => {
+                marketChart.reset();
+                marketChart.update();
+                growthChart.reset();
+                growthChart.update();
+            }
+        });
+        // --- AUDIO ENGINE (Same as V2.2) ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let audioEnabled = true;
+        function unlockAudio() {
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            document.removeEventListener('click', unlockAudio);
+            document.removeEventListener('touchstart', unlockAudio);
+            document.removeEventListener('keydown', unlockAudio);
+        }
+
+        document.addEventListener('click', unlockAudio);
+        document.addEventListener('touchstart', unlockAudio);
+        document.addEventListener('keydown', unlockAudio);
+
+        function toggleAudio() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            audioEnabled = !audioEnabled;
+            const btn = document.getElementById('audio-btn');
+            const icon = btn.querySelector('i');
+            if (audioEnabled) {
+                icon.className = "fa-solid fa-volume-high";
+                btn.classList.add("bg-kairos-cyan", "text-black", "shadow-[0_0_15px_#00f3ff]");
+                playClickSound();
+            } else {
+                icon.className = "fa-solid fa-volume-xmark";
+                btn.classList.remove("bg-kairos-cyan", "text-black", "shadow-[0_0_15px_#00f3ff]");
+            }
+        }
+
+        function playHoverSound() {
+            if (!audioEnabled) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.05);
+            gain.gain.setValueAtTime(0.03, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.05);
+        }
+
+        function playClickSound() {
+            if (!audioEnabled) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.15);
+            gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.15);
+        }
+
+        // --- CUSTOM CURSOR LOGIC ---
+        const cursorDot = document.getElementById('cursor-dot');
+        const cursorRing = document.getElementById('cursor-ring');
+        let mouseX = 0, mouseY = 0;
+        let cursorX = 0, cursorY = 0;
+
+        document.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            cursorDot.style.left = mouseX + 'px';
+            cursorDot.style.top = mouseY + 'px';
+        });
+
+        gsap.ticker.add(() => {
+            const dt = 1.0 - Math.pow(1.0 - 0.2, gsap.ticker.deltaRatio());
+            cursorX += (mouseX - cursorX) * dt;
+            cursorY += (mouseY - cursorY) * dt;
+            cursorRing.style.left = cursorX + 'px';
+            cursorRing.style.top = cursorY + 'px';
+        });
+
+        const interactives = document.querySelectorAll('.interactive-element');
+        interactives.forEach(el => {
+            el.addEventListener('mouseenter', () => {
+                document.body.classList.add('hovered');
+                playHoverSound();
+            });
+            el.addEventListener('mouseleave', () => document.body.classList.remove('hovered'));
+        });
+
+        // --- LOADING SIMULATION ---
+        const loader = document.getElementById('loader');
+        const bar = document.getElementById('progress-bar');
+        const loadText = document.getElementById('loading-pct');
+        
+        let progress = 0;
+        const interval = setInterval(() => {
+            progress += Math.random() * 3;
+            if(progress > 100) progress = 100;
+            
+            bar.style.width = `${progress}%`;
+            loadText.innerText = `${Math.floor(progress)}%`;
+            
+            if(Math.random() > 0.9) {
+                document.getElementById('latency-display').innerText = Math.floor(Math.random() * 30) + 5;
+            }
+
+            if(progress === 100) {
+                clearInterval(interval);
+                gsap.to(loader, { opacity: 0, duration: 0.8, delay: 0.2, ease: "power2.inOut", onComplete: () => {
+                    loader.style.display = 'none';
+                    initHeroAnim();
+                }});
+            }
+        }, 30);
+
+        function initHeroAnim() {
+            const tl = gsap.timeline();
+            tl.to('#hero-logos', { opacity: 1, y: 0, duration: 1, ease: 'back.out(1.7)' })
+              .to('#hero-title', { opacity: 1, duration: 1.5, onStart: startRandomGlitch }, "-=0.5")
+              .to('#hero-sub', { opacity: 1, duration: 1 }, "-=1")
+              .to('#hero-btn', { opacity: 1, duration: 1 }, "-=0.5");
+        }
+
+        function startRandomGlitch() {
+            const title = document.getElementById('hero-title');
+            setInterval(() => {
+                if(Math.random() > 0.7) {
+                    title.classList.add('glitch-active');
+                    setTimeout(() => title.classList.remove('glitch-active'), 200);
+                }
+            }, 2000);
+        }
+
+        // --- THREE.JS SCENE V2.1 ---
+        const canvas = document.getElementById('webgl-canvas');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x030304, 0.015);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 5;
+        camera.position.y = 0.5;
+
+        const renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+        const ambientLight = new THREE.AmbientLight(0x404040, 3);
+        scene.add(ambientLight);
+        
+        const blueLight = new THREE.PointLight(0x00f3ff, 2, 50);
+        blueLight.position.set(5, 5, 5);
+        scene.add(blueLight);
+
+        const purpleLight = new THREE.PointLight(0xbc13fe, 2, 50);
+        purpleLight.position.set(-5, -5, 5);
+        scene.add(purpleLight);
+
+        const gridHelper = new THREE.GridHelper(60, 60, 0x00f3ff, 0x111111);
+        gridHelper.position.y = -2;
+        gridHelper.material.transparent = true;
+        gridHelper.material.opacity = 0.15;
+        scene.add(gridHelper);
+
+        const coreGroup = new THREE.Group();
+        
+        const nucleusGeo = new THREE.IcosahedronGeometry(1, 2);
+        const nucleusMat = new THREE.MeshStandardMaterial({ 
+            color: 0x000000, roughness: 0.2, metalness: 1.0,
+            emissive: 0x00f3ff, emissiveIntensity: 0.4, wireframe: false,
+            flatShading: true
+        });
+        const nucleus = new THREE.Mesh(nucleusGeo, nucleusMat);
+        coreGroup.add(nucleus);
+
+        const cageGeo = new THREE.IcosahedronGeometry(1.8, 1);
+        const cageMat = new THREE.MeshBasicMaterial({ color: 0x00f3ff, wireframe: true, transparent: true, opacity: 0.1 });
+        const cage = new THREE.Mesh(cageGeo, cageMat);
+        coreGroup.add(cage);
+
+        const particlesGeo = new THREE.BufferGeometry();
+        const particleCount = 600;
+        const posArray = new Float32Array(particleCount * 3);
+        for(let i=0; i<particleCount*3; i++) {
+            posArray[i] = (Math.random() - 0.5) * 6;
+        }
+        particlesGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        const particlesMat = new THREE.PointsMaterial({ size: 0.015, color: 0xbc13fe, blending: THREE.AdditiveBlending });
+        const orbitParticles = new THREE.Points(particlesGeo, particlesMat);
+        coreGroup.add(orbitParticles);
+
+        scene.add(coreGroup);
+
+        const fieldGeo = new THREE.BufferGeometry();
+        const fieldCount = 1500;
+        const fieldPos = new Float32Array(fieldCount * 3);
+        const originalFieldPos = []; 
+
+        for(let i=0; i<fieldCount; i++) {
+            const x = (Math.random() - 0.5) * 50;
+            const y = (Math.random() - 0.5) * 50;
+            const z = (Math.random() - 0.5) * 30 - 10;
+            fieldPos[i*3] = x;
+            fieldPos[i*3+1] = y;
+            fieldPos[i*3+2] = z;
+            originalFieldPos.push({x,y,z});
+        }
+        fieldGeo.setAttribute('position', new THREE.BufferAttribute(fieldPos, 3));
+        const fieldMat = new THREE.PointsMaterial({ size: 0.04, color: 0x2667ff, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending });
+        const starField = new THREE.Points(fieldGeo, fieldMat);
+        scene.add(starField);
+        
+        // --- WORMHOLE SETUP ---
+        const wormholeGroup = new THREE.Group();
+        wormholeGroup.visible = false; // Initially hidden
+        scene.add(wormholeGroup);
+
+        // Helper function to create tunnel particles with specific color
+        function createSpiralTunnel(color, offsetAngle) {
+            const particleCount = 4000; // Particles per spiral
+            const geo = new THREE.BufferGeometry();
+            const pos = new Float32Array(particleCount * 3);
+
+            for(let i = 0; i < particleCount; i++) {
+                const i3 = i * 3;
+                const progress = i / particleCount; // From 0 to 1 along the tunnel
+
+                // Spiral motion equations
+                // Higher number (50) means more turns
+                const angle = progress * Math.PI * 50 + offsetAngle; 
+                
+                // Radius changes slightly for organic feel
+                const radius = 8 + Math.cos(progress * Math.PI * 10) * 2;
+
+                // Position: extends deep into negative Z
+                // Start at z=-50, end at z=-450
+                const z = -50 - progress * 400;
+                const x = Math.cos(angle) * radius + (Math.random()-0.5); // Slight randomness
+                const y = Math.sin(angle) * radius + (Math.random()-0.5);
+
+                pos[i3] = x;
+                pos[i3+1] = y;
+                pos[i3+2] = z;
+            }
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            
+            const mat = new THREE.PointsMaterial({ 
+                size: 0.2, 
+                color: color, 
+                transparent: true, 
+                opacity: 0.8, 
+                blending: THREE.AdditiveBlending,
+                sizeAttenuation: true // Distant particles look smaller
+            });
+            return new THREE.Points(geo, mat);
+        }
+
+        // Create two intertwining spirals (cyan and magenta)
+        const spiralCyan = createSpiralTunnel(0x00f3ff, 0);
+        const spiralMagenta = createSpiralTunnel(0xbc13fe, Math.PI); // 180 degree offset
+        wormholeGroup.add(spiralCyan);
+        wormholeGroup.add(spiralMagenta);
+
+        // Add light at the end to draw the eye
+        const endLight = new THREE.PointLight(0xffffff, 5, 200);
+        endLight.position.set(0, 0, -450);
+        wormholeGroup.add(endLight);
+
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        let time = 0;
+        
+        window.addEventListener('mousemove', (event) => {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            gsap.to(camera.position, {
+                x: mouse.x * 0.5,
+                y: 0.5 + mouse.y * 0.5,
+                duration: 1
+            });
+        });
+
+        let isGlitching = false;
+        window.addEventListener('mousedown', () => {
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects([nucleus, cage]);
+            if(intersects.length > 0) {
+                triggerGlitch();
+            }
+        });
+
+        function triggerGlitch() {
+            if(isGlitching) return;
+            isGlitching = true;
+            playClickSound();
+            
+            gsap.to(coreGroup.scale, { x: 1.6, y: 0.6, z: 1.6, duration: 0.1, yoyo: true, repeat: 3 });
+            gsap.to(cageMat, { opacity: 0.8, color: 0xbc13fe, duration: 0.1, yoyo: true, repeat: 5, onComplete: () => {
+                cageMat.color.setHex(0x00f3ff);
+            }});
+            
+            setTimeout(() => {
+                isGlitching = false;
+                coreGroup.scale.set(1,1,1);
+                cageMat.opacity = 0.1;
+            }, 500);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            time += 0.005;
+
+            coreGroup.rotation.y = time * 0.8;
+            coreGroup.rotation.z = Math.sin(time * 0.5) * 0.1;
+            cage.rotation.x -= 0.005;
+            cage.rotation.y += 0.005;
+            orbitParticles.rotation.y += 0.001;
+            if(wormholeGroup.visible) {
+                wormholeGroup.rotation.z -= 0.02; // Rotation speed
+            }
+
+            gridHelper.position.z = (time * 2) % 2; 
+            nucleusMat.emissiveIntensity = 0.4 + Math.sin(time * 4) * 0.2;
+
+            const positions = starField.geometry.attributes.position.array;
+            const vector = new THREE.Vector3(mouse.x, mouse.y, 0.5);
+            vector.unproject(camera);
+            const dir = vector.sub(camera.position).normalize();
+            const distance = -camera.position.z / dir.z;
+            const pos = camera.position.clone().add(dir.multiplyScalar(distance));
+
+            for(let i=0; i<fieldCount; i++) {
+                const ix = i*3;
+                const iy = i*3+1;
+                const iz = i*3+2;
+
+                let px = positions[ix];
+                let py = positions[iy];
+                let pz = positions[iz];
+
+                const dx = px - pos.x;
+                const dy = py - pos.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+
+                if(dist < 3) {
+                    const force = (3 - dist) * 0.05;
+                    px += dx * force;
+                    py += dy * force;
+                } else {
+                    px += (originalFieldPos[i].x - px) * 0.01;
+                    py += (originalFieldPos[i].y - py) * 0.01;
+                }
+                
+                positions[ix] = px;
+                positions[iy] = py;
+                positions[iy] += Math.sin(time + px) * 0.002;
+            }
+            starField.geometry.attributes.position.needsUpdate = true;
+            
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+
+        // --- GENERATE FEATURE CARDS (TRANSLATED) ---
+        const featureData = [
+            { icon: 'fa-brain', title: 'HUB ENSEIGNANT IA', color: 'border-kairos-cyan', desc: 'Réseau de neurones pour auto-notation & feedback personnalisé.' },
+            { icon: 'fa-gamepad', title: 'GAMIFICATION+', color: 'border-kairos-magenta', desc: 'Systèmes XP, quêtes et parcours de récompenses par blockchain.' },
+            { icon: 'fa-vr-cardboard', title: 'CLASSES 3D', color: 'border-kairos-blue', desc: 'Laboratoires virtuels immersifs et amphithéâtres avec audio spatial.' },
+            { icon: 'fa-network-wired', title: 'DÉCENTRALISÉ', color: 'border-purple-500', desc: 'Protocole d\'échange de connaissances direct pair-à-pair.' },
+            { icon: 'fa-route', title: 'PARCOURS ADAPTATIF', color: 'border-green-400', desc: 'Le curriculum s\'adapte dynamiquement à la charge cognitive.' },
+            { icon: 'fa-chart-line', title: 'ANALYTIQUE', color: 'border-yellow-400', desc: 'Insights profonds pour institutions via modèles prédictifs.' },
+        ];
+
+        const featureContainer = document.querySelectorAll('.feature-slot');
+        featureContainer.forEach((slot, index) => {
+            const data = featureData[index];
+            slot.innerHTML = `
+                <div class="glass-card p-8 rounded-xl border-l-4 ${data.color} h-full interactive-element group overflow-hidden relative" onmouseenter="playHoverSound()">
+                    <div class="scan-beam"></div> 
+                    <div class="absolute top-0 right-0 p-4 opacity-10 text-6xl font-orbitron font-bold text-white group-hover:opacity-20 transition-opacity">0${index+1}</div>
+                    <div class="text-3xl mb-6 text-white group-hover:scale-110 transition-transform duration-300 w-12 h-12 flex items-center justify-center rounded-full bg-white/5 shadow-[0_0_10px_rgba(255,255,255,0.1)] z-10 relative">
+                        <i class="fa-solid ${data.icon}"></i>
+                    </div>
+                    <h3 class="text-xl font-orbitron font-bold mb-2 group-hover:text-kairos-cyan transition-colors z-10 relative">${data.title}</h3>
+                    <p class="text-gray-400 font-mono text-xs leading-relaxed z-10 relative">${data.desc}</p>
+                </div>
+            `;
+
+            const card = slot.querySelector('.glass-card');
+            card.addEventListener('mousemove', (e) => {
+                const rect = card.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                const centerX = rect.width / 2;
+                const centerY = rect.height / 2;
+                const rotateX = ((y - centerY) / centerY) * -10;
+                const rotateY = ((x - centerX) / centerX) * 10;
+
+                card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale(1.05)`;
+                card.style.background = `
+                    radial-gradient(circle at ${x}px ${y}px, rgba(255,255,255,0.1), transparent 60%),
+                    linear-gradient(145deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01))
+                `;
+            });
+            card.addEventListener('mouseleave', () => {
+                card.style.transform = `perspective(1000px) rotateX(0) rotateY(0) scale(1)`;
+                card.style.background = `linear-gradient(145deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01))`;
+            });
+        });
+
+
+        // --- GENERATE TIMELINE (TRANSLATED) ---
+        const timelineEvents = [
+            { year: '2024', title: 'GENÈSE SYSTÈME', desc: 'Rayen Massoudi initialise le noyau KAIROS. Première poignée de main neurale IA réussie.', align: 'left' },
+            { year: '2025', title: 'INTÉGRATION NEURALE', desc: 'Bêta test des modules d\'apprentissage direct-au-cortex. Latence réduite à <5ms.', align: 'right' },
+            { year: '2026', title: 'GRILLE MONDIALE', desc: 'Lancement mondial des nœuds éducatifs décentralisés. Début de la migration des institutions traditionnelles.', align: 'left' },
+            { year: '2028', title: 'LA SINGULARITÉ', desc: 'KAIROS atteint l\'autonomie complète. L\'éducation devient une expérience fluide en temps réel.', align: 'right' },
+        ];
+
+        const timelineContainer = document.getElementById('timeline-items');
+        timelineEvents.forEach((ev, index) => {
+            const isLeft = ev.align === 'left';
+            timelineContainer.innerHTML += `
+                <div class="flex flex-col md:flex-row items-center justify-between w-full relative timeline-item opacity-0 translate-y-12 transition-all duration-700">
+                    
+                    <!-- Left Side (Content or Spacer) -->
+                    <div class="w-full md:w-[45%] ${isLeft ? 'text-right order-1 md:order-1' : 'order-2 md:order-3'}">
+                        ${isLeft ? `
+                        <div class="glass-card p-6 rounded-lg border-r-4 border-kairos-cyan relative interactive-element hover:scale-105 transition-transform">
+                            <div class="font-mono text-kairos-cyan text-sm mb-1">PHASE 0${index+1} // ${ev.year}</div>
+                            <h3 class="font-orbitron font-bold text-xl text-white mb-2">${ev.title}</h3>
+                            <p class="text-gray-400 text-xs font-mono">${ev.desc}</p>
+                        </div>` : ''}
+                    </div>
+
+                    <!-- Center Node -->
+                    <div class="absolute left-4 md:left-1/2 -translate-x-1/2 w-4 h-4 bg-black border-2 border-kairos-cyan rounded-full z-20 shadow-[0_0_10px_#00f3ff] order-1 md:order-2"></div>
+
+                    <!-- Right Side (Content or Spacer) -->
+                    <div class="w-full md:w-[45%] pl-12 md:pl-0 ${!isLeft ? 'text-left order-3' : 'order-2'}">
+                        ${!isLeft ? `
+                        <div class="glass-card p-6 rounded-lg border-l-4 border-kairos-magenta relative interactive-element hover:scale-105 transition-transform">
+                            <div class="font-mono text-kairos-magenta text-sm mb-1">PHASE 0${index+1} // ${ev.year}</div>
+                            <h3 class="font-orbitron font-bold text-xl text-white mb-2">${ev.title}</h3>
+                            <p class="text-gray-400 text-xs font-mono">${ev.desc}</p>
+                        </div>` : ''}
+                    </div>
+                </div>
+            `;
+        });
+
+        // --- COUNTER ANIMATION ---
+        gsap.utils.toArray('.counter').forEach(counter => {
+            const target = parseInt(counter.getAttribute('data-target'));
+            gsap.to(counter, {
+                innerText: target,
+                duration: 2,
+                snap: { innerText: 1 },
+                scrollTrigger: {
+                    trigger: counter,
+                    start: "top 85%",
+                    toggleActions: "play none none reverse"
+                }
+            });
+        });
+
+
+        // --- SCROLL ANIMATIONS ---
+        gsap.registerPlugin(ScrollTrigger);
+
+        // Core Animation
+        ScrollTrigger.create({
+            trigger: "#features",
+            start: "top bottom",
+            end: "bottom top",
+            scrub: true,
+            onUpdate: (self) => {
+                coreGroup.position.y = self.progress * 6;
+                coreGroup.position.z = -self.progress * 4;
+                coreGroup.rotation.x = self.progress * 2.5;
+                camera.position.z = 5 + self.progress * 2;
+            }
+        });
+
+        // Timeline Animation
+        gsap.to("#line-progress", {
+            height: "100%",
+            scrollTrigger: {
+                trigger: "#timeline",
+                start: "top center",
+                end: "bottom center",
+                scrub: true
+            }
+        });
+
+        gsap.utils.toArray('.timeline-item').forEach(item => {
+            gsap.to(item, {
+                opacity: 1,
+                y: 0,
+                scrollTrigger: {
+                    trigger: item,
+                    start: "top 80%",
+                    toggleActions: "play none none reverse"
+                }
+            });
+        });
+
+
+        // --- FIXED SLIDER LOGIC ---
+        const splitContainer = document.getElementById('split-container');
+        const splitForeground = document.getElementById('split-foreground');
+        const handle = document.getElementById('split-handle');
+        let isDragging = false;
+
+        handle.addEventListener('mousedown', () => {
+            isDragging = true;
+            handle.querySelector('div').classList.add('scale-125', 'bg-kairos-cyan');
+            playClickSound();
+        });
+
+        window.addEventListener('mouseup', () => {
+            isDragging = false;
+            handle.querySelector('div').classList.remove('scale-125', 'bg-kairos-cyan');
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            
+            const rect = splitContainer.getBoundingClientRect();
+            let x = e.clientX - rect.left;
+            
+            if (x < 0) x = 0;
+            if (x > rect.width) x = rect.width;
+            
+            const percentage = (x / rect.width) * 100;
+            
+            handle.style.left = `${percentage}%`;
+            
+            const clipValue = 100 - percentage;
+            splitForeground.style.clipPath = `inset(0 ${clipValue}% 0 0)`;
+        });
+
+
+        // --- RESIZE HANDLER ---
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        });
+// --- NEW WORMHOLE SEQUENCE LOGIC (WITH SPIRAL) ---
+        function enterWormhole() {
+            // 1. Audio Effect: More complex futuristic sound
+            if (audioEnabled) {
+                const osc1 = audioCtx.createOscillator();
+                const osc2 = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                
+                osc1.connect(gain);
+                osc2.connect(gain);
+                gain.connect(audioCtx.destination);
+                
+                // Oscillator 1: Sharp frequency rise (Engine whine)
+                osc1.type = 'sawtooth';
+                osc1.frequency.setValueAtTime(100, audioCtx.currentTime);
+                osc1.frequency.exponentialRampToValueAtTime(12000, audioCtx.currentTime + 4);
+                
+                // Oscillator 2: Low frequency (Rumble)
+                osc2.type = 'sine';
+                osc2.frequency.setValueAtTime(50, audioCtx.currentTime);
+                osc2.frequency.linearRampToValueAtTime(150, audioCtx.currentTime + 4);
+                
+                // Gain control
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.4, audioCtx.currentTime + 3.5);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 4);
+                
+                osc1.start(); osc2.start();
+                osc1.stop(audioCtx.currentTime + 4);
+                osc2.stop(audioCtx.currentTime + 4);
+            }
+
+            // 2. Hide UI Elements
+            gsap.to("nav, .hud-line, .bottom-8, #hero-logos, #hero-title, #hero-sub, #hero-btn, .scanlines", {
+                opacity: 0,
+                duration: 0.5,
+                pointerEvents: 'none'
+            });
+
+            // 3. The Animation Timeline
+            const tl = gsap.timeline();
+
+            // PHASE A: WARP JUMP (Launch towards nucleus)
+            // Duration: 0s -> 1.5s
+            tl.to(camera.position, {
+                z: -20,
+                duration: 1.5,
+                ease: "expo.in"
+            }, 0);
+            tl.to(camera, {
+                fov: 120,
+                duration: 1.5,
+                ease: "expo.in",
+                onUpdate: () => camera.updateProjectionMatrix()
+            }, 0);
+            tl.to(coreGroup.rotation, { z: 15, duration: 1.5, ease: "expo.in" }, 0);
+            tl.to(starField.scale, { z: 30, duration: 1.5, ease: "expo.in" }, 0);
+            tl.to(starField.material, { opacity: 0, duration: 0.5, delay: 1 }, 0);
+
+            // PHASE B: THE SWITCH (Switch to spiral tunnel)
+            // Happens at 1.5s
+            tl.call(() => {
+                coreGroup.visible = false;
+                starField.visible = false;
+                gridHelper.visible = false;
+                
+                wormholeGroup.visible = true;
+                // Reset camera for new tunnel
+                camera.position.z = 10; 
+                camera.fov = 90;
+                camera.updateProjectionMatrix();
+            }, null, 1.5);
+
+            // PHASE C: SPIRAL TRAVEL
+            // Duration: 1.5s -> 4.0s
+            tl.to(camera.position, {
+                z: -400, // Travel deep into tunnel
+                duration: 2.5,
+                ease: "power2.in", // Continuous acceleration
+            }, 1.5);
+             tl.to(camera, {
+                fov: 160, // Increase FOV for speed sensation
+                duration: 2.5,
+                ease: "power2.in",
+                onUpdate: () => camera.updateProjectionMatrix()
+            }, 1.5);
+
+            // PHASE D: THE FLASH & FINAL SCREEN
+            const flash = document.getElementById('warp-flash');
+            // Flash starts shortly before end
+            tl.to(flash, { opacity: 1, duration: 0.2, ease: "power2.in" }, 3.8);
+            
+            tl.call(() => {
+                document.getElementById('final-screen').classList.remove('hidden');
+                document.getElementById('cursor-dot').style.opacity = '0';
+                  document.getElementById('cursor-ring').style.opacity = '0';
+                  // 2. Force system cursor to appear
+                  document.body.style.cursor = 'auto';
+                gsap.set("#webgl-canvas", { opacity: 0 });
+            }, null, 4.0);
+
+            tl.to(flash, { opacity: 0, duration: 1.5 }, 4.0);
+            tl.to("#final-screen", { opacity: 1, duration: 1 }, 4.1);
+        }
+        const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&";
+
+      document.querySelectorAll(".hacker-effect").forEach(element => {
+          element.onmouseover = event => {
+              let iterations = 0;
+              const interval = setInterval(() => {
+                  event.target.innerText = event.target.innerText
+                      .split("")
+                      .map((letter, index) => {
+                          if(index < iterations) {
+                              return event.target.dataset.value[index];
+                          }
+                          return letters[Math.floor(Math.random() * 26)];
+                      })
+                      .join("");
+
+                  if(iterations >= event.target.dataset.value.length){ 
+                      clearInterval(interval);
+                  }
+                  
+                  iterations += 1 / 3; 
+              }, 30);
+          }
+      });
+      document.querySelectorAll('.interactive-element').forEach(btn => {
+          btn.addEventListener('mousemove', (e) => {
+              const rect = btn.getBoundingClientRect();
+              const x = e.clientX - rect.left - rect.width / 2;
+              const y = e.clientY - rect.top - rect.height / 2;
+              
+              gsap.to(btn, {
+                  x: x * 0.3, 
+                  y: y * 0.3,
+                  duration: 0.3,
+                  ease: "power2.out"
+              });
+          });
+
+          btn.addEventListener('mouseleave', () => {
+              gsap.to(btn, {
+                  x: 0,
+                  y: 0,
+                  duration: 0.5,
+                  ease: "elastic.out(1, 0.3)" 
+              });
+          });
+      });
+    </script>
+<div id="final-screen" class="fixed inset-0 bg-black z-[10000] flex flex-col items-center justify-center opacity-0 pointer-events-none hidden cursor-auto">
+        <div class="text-center">
+            <div class="w-24 h-24 mx-auto mb-8 rounded-full border-2 border-kairos-cyan flex items-center justify-center animate-spin-slow shadow-[0_0_30px_#00f3ff]">
+                <i class="fa-solid fa-code text-4xl text-white"></i>
+            </div>
+            <h1 class="text-4xl md:text-6xl font-orbitron font-bold text-white mb-4 tracking-tighter">
+                ACCÈS <span class="text-kairos-alert">RESTREINT</span>
+            </h1>
+            <div class="font-mono text-kairos-cyan text-sm md:text-xl tracking-[0.5em] mb-8 glitch-text" data-text="SYSTÈME EN DÉVELOPPEMENT">
+                SYSTÈME EN DÉVELOPPEMENT
+            </div>
+            <div class="p-4 border border-gray-800 bg-gray-900/50 rounded max-w-md mx-auto">
+                <p class="font-rajdhani text-gray-400 text-sm">
+                    Le module neural KAIROS V1.0 est actuellement en phase de prototypage fermé. <br>
+                    <span class="text-white">Veuillez contacter l'administrateur (Rayen Massoudi).</span>
+                </p>
+            </div>
+
+<div class="flex flex-col md:flex-row gap-8 justify-center mt-12 relative z-50">
+                <button onclick="window.location.href='#hero'; window.location.reload();" 
+                        class="group flex items-center gap-2 text-gray-400 hover:text-kairos-cyan font-mono text-xs transition-colors cursor-pointer pointer-events-auto relative z-50 p-4 border border-transparent hover:border-kairos-cyan/30 rounded">
+                    <i class="fa-solid fa-arrow-left group-hover:-translate-x-1 transition-transform"></i> 
+                    RETOUR_BASE
+                </button>
+
+                <button onclick="window.location.reload();" 
+                        class="group flex items-center gap-2 text-gray-400 hover:text-red-500 font-mono text-xs transition-colors cursor-pointer pointer-events-auto relative z-50 p-4 border border-transparent hover:border-red-500/30 rounded">
+                    <i class="fa-solid fa-power-off group-hover:rotate-90 transition-transform"></i>
+                    REINITIALISER_NOYAU
+                </button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
